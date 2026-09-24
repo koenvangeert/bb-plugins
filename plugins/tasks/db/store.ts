@@ -54,6 +54,7 @@ type SqlParameter = string | number;
 
 const ULID_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 const POSITION_STEP = 1_024;
+const SYSTEM_AUTHOR_NAME = "Tasks";
 const MIN_POSITION_GAP = 0.000_001;
 
 interface FolderRow {
@@ -505,7 +506,14 @@ export function escapeLike(value: string): string {
     .replaceAll("_", "\\_");
 }
 
-export function createTasksStore(db: PluginDatabase) {
+export interface TasksStoreOptions {
+  onTasksUnblocked?(taskIds: readonly string[]): void;
+}
+
+export function createTasksStore(
+  db: PluginDatabase,
+  options: TasksStoreOptions = {},
+) {
   initializeTasksSchema(db);
 
   const getFolderRow = db.prepare<[string], FolderRow>(
@@ -1116,6 +1124,36 @@ export function createTasksStore(db: PluginDatabase) {
       .map(taskFromRow);
   }
 
+  const selectNewlyReadyTaskIds = db.prepare<[string], { id: string }>(
+    `
+    SELECT d.blocked_task_id AS id
+    FROM task_dependencies d
+    WHERE d.blocker_task_id = ?
+      AND NOT EXISTS (
+        SELECT 1 FROM task_dependencies other
+        JOIN tasks b ON b.id = other.blocker_task_id
+        WHERE other.blocked_task_id = d.blocked_task_id
+          AND b.status ${OPEN_STATUS_SQL}
+      )
+    ORDER BY d.blocked_task_id
+  `,
+  );
+
+  function commentOnUnblockedTasks(before: Task, after: Task): void {
+    if (!isOpenStatus(before.status) || isOpenStatus(after.status)) return;
+    const taskIds = selectNewlyReadyTaskIds.all(after.id).map((row) => row.id);
+    for (const taskId of taskIds) {
+      createComment({
+        taskId,
+        kind: "system",
+        authorName: SYSTEM_AUTHOR_NAME,
+        body: `Unblocked: ${after.key} is ${after.status}`,
+        notifiedCount: 0,
+      });
+    }
+    if (taskIds.length > 0) options.onTasksUnblocked?.(taskIds);
+  }
+
   const updateTaskTransaction = db.transaction(
     (id: string, input: UpdateTaskInput): Task => {
       const current = requireTask(id);
@@ -1173,7 +1211,9 @@ export function createTasksStore(db: PluginDatabase) {
         nowIso(),
         id,
       );
-      return requireTask(id);
+      const updated = requireTask(id);
+      commentOnUnblockedTasks(current, updated);
+      return updated;
     },
   );
 
@@ -1267,7 +1307,9 @@ export function createTasksStore(db: PluginDatabase) {
         UPDATE tasks SET status = ?, position = ?, updated_at = ? WHERE id = ?
       `,
       ).run(input.status, position, nowIso(), id);
-      return requireTask(id);
+      const moved = requireTask(id);
+      commentOnUnblockedTasks(task, moved);
+      return moved;
     },
   );
 

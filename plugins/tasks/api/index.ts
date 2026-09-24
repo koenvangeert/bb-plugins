@@ -60,7 +60,11 @@ export interface TasksApiStore {
 
 export function createStore(bb: BbPluginApi): TasksApiStore {
   const database = bb.storage.database();
-  const tasks = createTasksStore(database);
+  const tasks = createTasksStore(database, {
+    onTasksUnblocked(taskIds) {
+      for (const taskId of taskIds) publishCommentsChanged(bb, taskId);
+    },
+  });
 
   return {
     tasks,

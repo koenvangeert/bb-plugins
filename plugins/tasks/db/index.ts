@@ -4,5 +4,6 @@ export {
   TaskDependencyError,
   TasksPageCursorError,
   type TasksStore,
+  type TasksStoreOptions,
 } from "./store";
 export * from "./types";
