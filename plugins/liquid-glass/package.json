@@ -1,0 +1,36 @@
+{
+  "name": "bb-plugin-liquid-glass",
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "bb": ">=0.43.4 <0.44",
+    "bbPluginSdk": ">=0.5.9 <0.6"
+  },
+  "scripts": {
+    "test": "node --test theme.test.mjs",
+    "check": "tsc --noEmit",
+    "build": "bb plugin build"
+  },
+  "bb": {
+    "name": "Liquid Glass",
+    "description": "A light, pearly glass theme with a pastel wallpaper and reflective rims.",
+    "branding": {
+      "icon": "Sparkles"
+    },
+    "server": "./server.ts",
+    "skills": [],
+    "themes": [
+      {
+        "id": "pearl",
+        "name": "Liquid Glass",
+        "css": "./themes/pearl.css"
+      }
+    ]
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "0.5.9",
+    "@types/node": "^22.0.0",
+    "postcss": "^8.5.28",
+    "typescript": "^5.7.0"
+  }
+}

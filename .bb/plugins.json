@@ -1,0 +1,13 @@
+{
+  "$schema": "https://getbb.app/schemas/plugins.schema.json",
+  "schemaVersion": 1,
+  "name": "koenvangeert-bb-plugins",
+  "plugins": [
+    { "name": "github-insight", "source": "./plugins/github-insight" },
+    { "name": "tasks-plus", "source": "./plugins/tasks" },
+    { "name": "code-cleanup", "source": "./plugins/code-cleanup" },
+    { "name": "liquid-glass", "source": "./plugins/liquid-glass" },
+    { "name": "pr-thread-list", "source": "./plugins/pr-thread-list" },
+    { "name": "task-board", "source": "./plugins/task-board" }
+  ]
+}

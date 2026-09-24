@@ -1,0 +1,133 @@
+/* Liquid Glass. Host selector map: COMPATIBILITY.md. No layout replacement. */
+:root, .light {
+  color-scheme: light;
+  --canvas: #f5f4fa;
+  --ink: #242a40;
+  --foreground: #242a40;
+  --muted-foreground: #515970;
+  --subtle-foreground: #596178;
+  --readback-foreground: #394158;
+  --primary: #4f4dc2;
+  --primary-foreground: #ffffff;
+  --sidebar: #f0eef8;
+  --sidebar-foreground: #242a40;
+  --sidebar-accent: #e4e4f4;
+  --card: #faf9fd;
+  --popover: #faf9fd;
+  --popover-foreground: #242a40;
+  --surface-recessed-solid: #eeeef6;
+  --border: #b9bdd1;
+  --ring: #5751ba;
+  --lg-wallpaper: radial-gradient(ellipse at 5% 12%, #b8dcfa 0%, transparent 52%), radial-gradient(ellipse at 95% 68%, #f2c8df 0%, transparent 56%), radial-gradient(ellipse at 48% 95%, #c8c0f4 0%, transparent 55%), linear-gradient(135deg, #f8f5fc, #e5eafa);
+  --lg-material: #f5f4fb;
+  --lg-content: #faf9fd;
+  --lg-rim: #ffffff;
+  --lg-edge: #bbc1d380;
+  --lg-shadow: 0 8px 28px #5358761c, 0 2px 5px #53587612;
+  --lg-blur: none;
+  --lg-glint: linear-gradient(125deg, #ffffffb8, #ffffff18 38%, #ffffff00 65%, #ffffff70);
+}
+
+.dark {
+  color-scheme: dark;
+  --canvas: #202333;
+  --ink: #d6daeb;
+  --foreground: #d6daeb;
+  --muted-foreground: #b3b9d0;
+  --subtle-foreground: #aab2cb;
+  --readback-foreground: #c7ccdf;
+  --primary: #b6b4ff;
+  --primary-foreground: #202333;
+  --sidebar: #252838;
+  --sidebar-foreground: #d6daeb;
+  --sidebar-accent: #383c54;
+  --card: #272b3c;
+  --popover: #272b3c;
+  --popover-foreground: #d6daeb;
+  --surface-recessed-solid: #232738;
+  --border: #555d77;
+  --ring: #b6b4ff;
+  --lg-wallpaper: radial-gradient(ellipse at 5% 12%, #303f5c, transparent 52%), radial-gradient(ellipse at 95% 68%, #463448, transparent 56%), linear-gradient(135deg, #202333, #2d2d46);
+  --lg-material: #272b3c;
+  --lg-content: #272b3c;
+  --lg-rim: #b6bed547;
+  --lg-edge: #7a84964d;
+  --lg-shadow: 0 8px 28px #00000030, 0 2px 5px #00000020;
+  --lg-glint: linear-gradient(125deg, #ffffff12, #ffffff00 45%, #ffffff09);
+}
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root, .light {
+    --lg-material: #f9f8ffb8;
+    --lg-blur: blur(18px) saturate(135%);
+  }
+  .dark { --lg-material: #272b3cdb; }
+}
+
+/* The wallpaper is painted on each large backing surface, not a fixed overlay. */
+body.bb-app-shell,
+[data-sidebar="inset"] {
+  background-color: var(--canvas);
+  background-image: var(--lg-wallpaper);
+  background-attachment: fixed;
+}
+
+/* Keep the sidebar's geometry, collapsibility and sticky rows unchanged. */
+[data-sidebar="panel"],
+[data-promptbox],
+header:has(> [data-testid="app-page-header-content-row"]),
+[data-radix-popper-content-wrapper] > [role="menu"],
+[data-radix-popper-content-wrapper] > [role="dialog"],
+[data-radix-popper-content-wrapper] > [role="listbox"],
+[data-persistent-drawer-content] {
+  background-color: var(--lg-material);
+  background-image: var(--lg-glint);
+  border: 1px solid var(--lg-edge);
+  border-radius: 18px;
+  box-shadow: inset 0 1px 0 var(--lg-rim), inset 1px 0 0 var(--lg-rim), inset 0 -1px 0 #ffffff24, var(--lg-shadow);
+  -webkit-backdrop-filter: var(--lg-blur);
+  backdrop-filter: var(--lg-blur);
+}
+
+/* Compact menus use a bottom sheet rather than a popper portal. */
+[data-persistent-drawer-content] {
+  border-radius: 18px 18px 0 0;
+}
+
+[data-sidebar="panel"] {
+  background-image: var(--lg-glint), var(--lg-wallpaper);
+  border-radius: 0 22px 22px 0;
+}
+[data-sidebar="panel"] [data-sidebar="sidebar"],
+[data-sidebar="panel"] [data-sidebar="content"] {
+  background: transparent;
+}
+
+/* Opaque text backing remains independent of the glass controls. */
+[data-message-column] {
+  background-color: var(--lg-content);
+  border: 1px solid var(--lg-edge);
+  border-radius: 14px;
+  padding: 12px 16px;
+}
+pre, .xterm, [data-pierre-diffs] {
+  background-color: var(--lg-content);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root, .light { --lg-material: #f5f4fb; --lg-blur: none; }
+  .dark { --lg-material: #272b3c; }
+}
+
+@media (forced-colors: active) {
+  body.bb-app-shell, [data-sidebar="inset"], [data-sidebar="panel"],
+  [data-promptbox], header:has(> [data-testid="app-page-header-content-row"]),
+  [data-radix-popper-content-wrapper] > [role], [data-persistent-drawer-content] {
+    background: Canvas;
+    color: CanvasText;
+    border-color: CanvasText;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
