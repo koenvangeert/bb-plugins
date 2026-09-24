@@ -137,6 +137,37 @@ describe("collectInsight on PR 25337", () => {
     });
   });
 
+  it("lists the pending code owner teams before the approvals", async () => {
+    const insight = await collectInsight(recordedGitHub());
+
+    expect(insight.reviewers.slice(0, 2)).toEqual([
+      { name: "workflows-frontend", kind: "team", state: "pending", codeOwner: true },
+      {
+        name: "semantic-model-ontology-frontend",
+        kind: "team",
+        state: "pending",
+        codeOwner: true,
+      },
+    ]);
+    expect(insight.reviewers).toContainEqual({
+      name: "koenvangeert",
+      kind: "user",
+      state: "approved",
+      codeOwner: false,
+    });
+    expect(insight.reviewers).toHaveLength(11);
+  });
+
+  it("gives the merge blockers of a branch that is behind and needs review", async () => {
+    const insight = await collectInsight(recordedGitHub());
+
+    expect(insight.blockers).toEqual([
+      { code: "checks_failed", text: "1 check failed" },
+      { code: "behind", text: "Branch out of date" },
+      { code: "review_required", text: "Review required" },
+    ]);
+  });
+
   it("skips the detail query when nothing failed or was cancelled", async () => {
     let detailCalls = 0;
 
