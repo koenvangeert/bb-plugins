@@ -8,6 +8,7 @@ import pageOne from "./test/fixtures/pr-25337-overview-page-1.json";
 import pageTwo from "./test/fixtures/pr-25337-overview-page-2.json";
 import checkRunDetails from "./test/fixtures/pr-25337-check-run-details.json";
 import type { GhFailure } from "./github/gh-failure";
+import type { PrSummary } from "./core/summary";
 import plugin from "./server";
 
 type PullRequestResult = Awaited<
@@ -102,6 +103,7 @@ async function setup(options: {
           options.threads.map(
             ({ id }) => threadResponse(id) as unknown as ThreadListItem,
           ),
+        updatePluginMetadata: async () => ({}),
       },
       environments: {
         pullRequest: async ({ environmentId }) =>
@@ -124,6 +126,19 @@ function overviewRefreshes(harness: Awaited<ReturnType<typeof setup>>) {
       call.method === "fetchOverviewPage" &&
       (call.input as { after: string | null }).after === null,
   );
+}
+
+interface MetadataUpdate {
+  threadId: string;
+  pluginId: string;
+  set?: { prSummary: PrSummary };
+  remove?: string[];
+}
+
+function metadataUpdates(harness: Awaited<ReturnType<typeof setup>>) {
+  return harness.sdk
+    .callsTo("threads.updatePluginMetadata")
+    .map(([args]) => args as MetadataUpdate);
 }
 
 async function settle() {
@@ -584,5 +599,198 @@ describe("pr-poller", () => {
     run.controller.abort();
 
     await expect(run.done).resolves.toBeUndefined();
+  });
+});
+
+describe("prSummary metadata", () => {
+  it("writes the summary to the metadata of every thread on the PR", async () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-09-24T10:00:00Z") });
+    const harness = await setup({
+      threads: [
+        { id: "thr_1", environmentId: "env_1" },
+        { id: "thr_2", environmentId: "env_2" },
+      ],
+      pullRequests: { env_1: linkedPr(25337), env_2: linkedPr(25337) },
+      host: pages(),
+    });
+    const run = harness.behavior.runService("pr-poller");
+    await settle();
+
+    expect(metadataUpdates(harness)).toEqual(
+      ["thr_1", "thr_2"].map((threadId) => ({
+        threadId,
+        pluginId: "github-insight",
+        set: {
+          prSummary: expect.objectContaining({
+            version: 1,
+            updatedAt: "2026-09-24T10:00:00.000Z",
+            pr: { number: 25337, url: "https://github.com/collibra/frontend/pull/25337", state: "open" },
+            error: null,
+          }),
+        },
+      })),
+    );
+    run.controller.abort();
+  });
+
+  it("does not write when a refresh finds the same summary", async () => {
+    const harness = await setup({
+      threads: [{ id: "thr_1", environmentId: "env_1" }],
+      pullRequests: { env_1: linkedPr(25337) },
+      host: pages(),
+    });
+    await harness.behavior.callRpc("refresh", { threadId: "thr_1" });
+
+    await harness.behavior.callRpc("refresh", { threadId: "thr_1" });
+
+    expect(metadataUpdates(harness)).toHaveLength(1);
+  });
+
+  it("writes the newer refresh time every 30 minutes when the data stays the same", async () => {
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "Date"],
+      now: new Date("2026-09-24T10:00:00Z"),
+    });
+    const harness = await setup({
+      threads: [{ id: "thr_1", environmentId: "env_1" }],
+      pullRequests: { env_1: linkedPr(25337) },
+      host: pages(),
+    });
+    const run = harness.behavior.runService("pr-poller");
+    await settle();
+
+    await vi.advanceTimersByTimeAsync(29 * 60_000);
+    await settle();
+    expect(metadataUpdates(harness)).toHaveLength(1);
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    await settle();
+    expect(metadataUpdates(harness)).toHaveLength(2);
+    expect(metadataUpdates(harness)[1]).toMatchObject({
+      set: { prSummary: { updatedAt: "2026-09-24T10:30:00.000Z" } },
+    });
+    run.controller.abort();
+  });
+
+  it("keeps the last good data and sets the error when a refresh fails", async () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-09-24T10:00:00Z") });
+    let host: (call: HostCall) => unknown = pages();
+    const harness = await setup({
+      threads: [{ id: "thr_1", environmentId: "env_1" }],
+      pullRequests: { env_1: linkedPr(25337) },
+      host: (call) => host(call),
+    });
+    await harness.behavior.callRpc("refresh", { threadId: "thr_1" });
+    vi.setSystemTime(new Date("2026-09-24T10:05:00Z"));
+    host = () => failed({ kind: "rate_limited", resetAt: null });
+
+    await harness.behavior.callRpc("refresh", { threadId: "thr_1" });
+
+    const [good, failing] = metadataUpdates(harness).map((update) => update.set?.prSummary);
+    expect(failing).toEqual({ ...good, error: "rate limited" });
+  });
+
+  it("puts a fixed error text in the summary instead of raw gh output", async () => {
+    let host: (call: HostCall) => unknown = pages();
+    const harness = await setup({
+      threads: [{ id: "thr_1", environmentId: "env_1" }],
+      pullRequests: { env_1: linkedPr(25337) },
+      host: (call) => host(call),
+    });
+    await harness.behavior.callRpc("refresh", { threadId: "thr_1" });
+    host = () => failed({ kind: "failed", message: "HTTP 502 from api.github.com" });
+
+    const result = await harness.behavior.callRpc("refresh", { threadId: "thr_1" });
+
+    expect(result).toMatchObject({ error: "HTTP 502 from api.github.com" });
+    expect(metadataUpdates(harness)[1]?.set?.prSummary.error).toBe("refresh failed");
+  });
+
+  it("removes the old summary when the first refresh of a thread's new PR fails", async () => {
+    const pullRequests: Record<string, PullRequestResult> = { env_1: linkedPr(1) };
+    const harness = await setup({
+      threads: [{ id: "thr_1", environmentId: "env_1" }],
+      pullRequests,
+      host: (call) =>
+        (call.input as { number?: number }).number === 2
+          ? failed({ kind: "gh_logged_out" })
+          : pages()(call),
+    });
+    await harness.behavior.callRpc("refresh", { threadId: "thr_1" });
+    pullRequests.env_1 = linkedPr(2);
+
+    await harness.behavior.callRpc("refresh", { threadId: "thr_1" });
+
+    expect(metadataUpdates(harness)[1]).toEqual({
+      threadId: "thr_1",
+      pluginId: "github-insight",
+      remove: ["prSummary"],
+    });
+  });
+
+  it("removes the summary once when bb no longer links a PR to the thread", async () => {
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "Date"],
+      now: new Date("2026-09-24T10:00:00Z"),
+    });
+    const pullRequests: Record<string, PullRequestResult> = { env_1: linkedPr(25337) };
+    const harness = await setup({
+      threads: [{ id: "thr_1", environmentId: "env_1" }],
+      pullRequests,
+      host: pages(),
+    });
+    const run = harness.behavior.runService("pr-poller");
+    await settle();
+
+    pullRequests.env_1 = { outcome: "absent" };
+    await vi.advanceTimersByTimeAsync(2 * 60_000);
+    await settle();
+
+    expect(metadataUpdates(harness).slice(1)).toEqual([
+      { threadId: "thr_1", pluginId: "github-insight", remove: ["prSummary"] },
+    ]);
+    run.controller.abort();
+  });
+
+  it("removes the summary of a thread without an environment", async () => {
+    const harness = await setup({ threads: [{ id: "thr_1", environmentId: null }] });
+
+    const run = harness.behavior.runService("pr-poller");
+    await settle();
+    run.controller.abort();
+
+    expect(metadataUpdates(harness)).toEqual([
+      { threadId: "thr_1", pluginId: "github-insight", remove: ["prSummary"] },
+    ]);
+  });
+
+  it("keeps the summary when bb cannot read the PR", async () => {
+    const pullRequests: Record<string, PullRequestResult> = { env_1: linkedPr(25337) };
+    const harness = await setup({
+      threads: [{ id: "thr_1", environmentId: "env_1" }],
+      pullRequests,
+      host: pages(),
+    });
+    await harness.behavior.callRpc("refresh", { threadId: "thr_1" });
+    pullRequests.env_1 = { outcome: "unavailable", message: "gh not found" };
+
+    await harness.behavior.callRpc("refresh", { threadId: "thr_1" });
+
+    expect(metadataUpdates(harness)).toHaveLength(1);
+  });
+
+  it("still returns the insight when the metadata write fails", async () => {
+    const harness = await setup({
+      threads: [{ id: "thr_1", environmentId: "env_1" }],
+      pullRequests: { env_1: linkedPr(25337) },
+      host: pages(),
+    });
+    harness.sdk.stub("threads.updatePluginMetadata", async () => {
+      throw new Error("HTTP 500");
+    });
+
+    const result = await harness.behavior.callRpc("refresh", { threadId: "thr_1" });
+
+    expect(result).toMatchObject({ kind: "ok", error: null });
   });
 });

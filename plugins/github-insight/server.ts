@@ -6,6 +6,7 @@ import {
 } from "./core/insight-updated";
 import { collectInsight } from "./core/overview";
 import { parsePullRequestUrl } from "./core/pr-ref";
+import { SUMMARY_METADATA_KEY } from "./core/summary";
 import {
   createInsightService,
   GhFailureError,
@@ -61,6 +62,15 @@ export default async function plugin(bb: BbPluginApi) {
       }),
     publish: (threadIds) =>
       bb.realtime.publish(INSIGHT_UPDATED_CHANNEL, { threadIds } satisfies InsightUpdated),
+    writeSummary: async (threadId, summary) => {
+      await bb.sdk.threads.updatePluginMetadata({
+        threadId,
+        set: { [SUMMARY_METADATA_KEY]: summary },
+      });
+    },
+    removeSummary: async (threadId) => {
+      await bb.sdk.threads.updatePluginMetadata({ threadId, remove: [SUMMARY_METADATA_KEY] });
+    },
     warn: (message) => bb.log.warn(message),
   });
 
