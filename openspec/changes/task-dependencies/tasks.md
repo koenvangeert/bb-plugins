@@ -42,5 +42,5 @@
 ## 8. Migration and check
 
 - [x] 8.1 Write `plugins/tasks/scripts/import-bundled-data.sh` (D9) and add the migration and rollback steps to the README; verify on a copy of the real data folder that 18 tasks, 1 preset, and 7 thread links arrive with the same keys, and that a second run stops with an error
-- [ ] 8.2 Run the migration plan on this machine; verify in the Tasks panel that existing tasks show, add a link ABC-3 blocks ABC-5, see the badge, the filter, the confirm dialog, and the unblocked comment when ABC-3 goes to `done`
+- [x] 8.2 Run the migration plan on this machine; verify in the Tasks panel that existing tasks show, add a link ABC-3 blocks ABC-5, see the badge, the filter, the confirm dialog, and the unblocked comment when ABC-3 goes to `done`
 - [x] 8.3 Run `openspec validate task-dependencies --strict`, `npm run typecheck`, and `npm test` in `plugins/tasks`; verify all pass
