@@ -1,0 +1,238 @@
+{
+  "data": {
+    "repository": {
+      "pullRequest": {
+        "number": 25337,
+        "title": "feat(*): add ootbDomainTypesIds constants and replace hardcoded domain type UUIDs",
+        "state": "OPEN",
+        "isDraft": false,
+        "url": "https://github.com/collibra/frontend/pull/25337",
+        "commits": {
+          "nodes": [
+            {
+              "commit": {
+                "statusCheckRollup": {
+                  "contexts": {
+                    "totalCount": 124,
+                    "pageInfo": {
+                      "hasNextPage": false,
+                      "endCursor": "MTI0"
+                    },
+                    "nodes": [
+                      {
+                        "__typename": "CheckRun",
+                        "databaseId": 107549950651,
+                        "name": "trigger-testing / a11y-test (6) / a11y-test",
+                        "status": "COMPLETED",
+                        "conclusion": "SUCCESS",
+                        "detailsUrl": "https://github.com/collibra/frontend/actions/runs/35973768789/job/107549950651",
+                        "startedAt": "2026-09-24T08:13:45Z"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "databaseId": 107549950367,
+                        "name": "trigger-testing / a11y-test (7) / a11y-test",
+                        "status": "COMPLETED",
+                        "conclusion": "SUCCESS",
+                        "detailsUrl": "https://github.com/collibra/frontend/actions/runs/35973768789/job/107549950367",
+                        "startedAt": "2026-09-24T08:13:46Z"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "databaseId": 107549950992,
+                        "name": "trigger-testing / a11y-test (8) / a11y-test",
+                        "status": "COMPLETED",
+                        "conclusion": "SUCCESS",
+                        "detailsUrl": "https://github.com/collibra/frontend/actions/runs/35973768789/job/107549950992",
+                        "startedAt": "2026-09-24T08:13:47Z"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "databaseId": 107549950395,
+                        "name": "trigger-testing / a11y-test (9) / a11y-test",
+                        "status": "COMPLETED",
+                        "conclusion": "SUCCESS",
+                        "detailsUrl": "https://github.com/collibra/frontend/actions/runs/35973768789/job/107549950395",
+                        "startedAt": "2026-09-24T08:13:44Z"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "databaseId": 107549950564,
+                        "name": "trigger-testing / a11y-test (10) / a11y-test",
+                        "status": "COMPLETED",
+                        "conclusion": "SUCCESS",
+                        "detailsUrl": "https://github.com/collibra/frontend/actions/runs/35973768789/job/107549950564",
+                        "startedAt": "2026-09-24T08:13:46Z"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "databaseId": 107549950520,
+                        "name": "trigger-testing / a11y-test (11) / a11y-test",
+                        "status": "COMPLETED",
+                        "conclusion": "SUCCESS",
+                        "detailsUrl": "https://github.com/collibra/frontend/actions/runs/35973768789/job/107549950520",
+                        "startedAt": "2026-09-24T08:13:44Z"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "databaseId": 107552546665,
+                        "name": "trigger-testing / vitest-tests-report",
+                        "status": "COMPLETED",
+                        "conclusion": "SUCCESS",
+                        "detailsUrl": "https://github.com/collibra/frontend/actions/runs/35973768789/job/107552546665",
+                        "startedAt": "2026-09-24T08:21:59Z"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "databaseId": 107557723352,
+                        "name": "trigger-testing / cypress-tests-report",
+                        "status": "COMPLETED",
+                        "conclusion": "SUCCESS",
+                        "detailsUrl": "https://github.com/collibra/frontend/actions/runs/35973768789/job/107557723352",
+                        "startedAt": "2026-09-24T08:38:13Z"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "databaseId": 107555256702,
+                        "name": "trigger-testing / sonarqube",
+                        "status": "COMPLETED",
+                        "conclusion": "SUCCESS",
+                        "detailsUrl": "https://github.com/collibra/frontend/actions/runs/35973768789/job/107555256702",
+                        "startedAt": "2026-09-24T08:30:32Z"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "databaseId": 107555256645,
+                        "name": "trigger-testing / collect-pr-metrics",
+                        "status": "COMPLETED",
+                        "conclusion": "SUCCESS",
+                        "detailsUrl": "https://github.com/collibra/frontend/actions/runs/35973768789/job/107555256645",
+                        "startedAt": "2026-09-24T08:30:32Z"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "databaseId": 107549297157,
+                        "name": "trigger-chromatic-check",
+                        "status": "COMPLETED",
+                        "conclusion": "SKIPPED",
+                        "detailsUrl": "https://github.com/collibra/frontend/actions/runs/35973768811/job/107549297157",
+                        "startedAt": "2026-09-24T08:11:13Z"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "databaseId": 107550478972,
+                        "name": "trigger-chromatic-check / publish-chromatic",
+                        "status": "COMPLETED",
+                        "conclusion": "SUCCESS",
+                        "detailsUrl": "https://github.com/collibra/frontend/actions/runs/35973768789/job/107550478972",
+                        "startedAt": "2026-09-24T08:15:21Z"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "databaseId": 107549296681,
+                        "name": "e2e-only-skip-results",
+                        "status": "COMPLETED",
+                        "conclusion": "CANCELLED",
+                        "detailsUrl": "https://github.com/collibra/frontend/actions/runs/35973768811/job/107549296681",
+                        "startedAt": "2026-09-24T08:11:13Z"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "databaseId": 107559104107,
+                        "name": "e2e-only-skip-results",
+                        "status": "COMPLETED",
+                        "conclusion": "SKIPPED",
+                        "detailsUrl": "https://github.com/collibra/frontend/actions/runs/35973768789/job/107559104107",
+                        "startedAt": "2026-09-24T08:42:19Z"
+                      },
+                      {
+                        "__typename": "StatusContext",
+                        "context": "Storybook Publish",
+                        "state": "SUCCESS",
+                        "targetUrl": "https://6357ed1fad45d873a4da9213-ldtcwaoogc.chromatic.com/",
+                        "createdAt": "2026-09-24T08:20:16Z"
+                      },
+                      {
+                        "__typename": "StatusContext",
+                        "context": "UI Review",
+                        "state": "SUCCESS",
+                        "targetUrl": "https://www.chromatic.com/review?appId=6357ed1fad45d873a4da9213&number=25337&type=linked",
+                        "createdAt": "2026-09-24T08:21:39Z"
+                      },
+                      {
+                        "__typename": "StatusContext",
+                        "context": "UI Tests",
+                        "state": "SUCCESS",
+                        "targetUrl": "https://www.chromatic.com/build?appId=6357ed1fad45d873a4da9213&number=89350",
+                        "createdAt": "2026-09-24T08:21:24Z"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "databaseId": 107549273457,
+                        "name": "Wiz Data Scanner",
+                        "status": "COMPLETED",
+                        "conclusion": "SUCCESS",
+                        "detailsUrl": "https://app.wiz.io/findings/code-cicd-scans#~(event~(~%27006ab4db-1d0b-8658-acaa-bef3d7cdceb9*2cCI_CD_SCAN*2c2026-09-24T08*3a11*3a09.77209386Z))",
+                        "startedAt": "2026-09-24T08:11:09Z"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "databaseId": 107549273247,
+                        "name": "Wiz IaC Scanner",
+                        "status": "COMPLETED",
+                        "conclusion": "SUCCESS",
+                        "detailsUrl": "https://app.wiz.io/findings/code-cicd-scans#~(event~(~%27006ab4db-1d0b-8658-acaa-bef3d7cdceb9*2cCI_CD_SCAN*2c2026-09-24T08*3a11*3a09.77209386Z))",
+                        "startedAt": "2026-09-24T08:11:09Z"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "databaseId": 107549272985,
+                        "name": "Wiz SAST Scanner",
+                        "status": "COMPLETED",
+                        "conclusion": "SUCCESS",
+                        "detailsUrl": "https://app.wiz.io/findings/code-cicd-scans#~(event~(~%27006ab4db-1d0b-8658-acaa-bef3d7cdceb9*2cCI_CD_SCAN*2c2026-09-24T08*3a11*3a09.77209386Z))",
+                        "startedAt": "2026-09-24T08:11:09Z"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "databaseId": 107549273105,
+                        "name": "Wiz Secret Scanner",
+                        "status": "COMPLETED",
+                        "conclusion": "SUCCESS",
+                        "detailsUrl": "https://app.wiz.io/findings/code-cicd-scans#~(event~(~%27006ab4db-1d0b-8658-acaa-bef3d7cdceb9*2cCI_CD_SCAN*2c2026-09-24T08*3a11*3a09.77209386Z))",
+                        "startedAt": "2026-09-24T08:11:09Z"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "databaseId": 107549273717,
+                        "name": "Wiz Vulnerability Scanner",
+                        "status": "COMPLETED",
+                        "conclusion": "SUCCESS",
+                        "detailsUrl": "https://app.wiz.io/findings/code-cicd-scans#~(event~(~%27006ab4db-1d0b-8658-acaa-bef3d7cdceb9*2cCI_CD_SCAN*2c2026-09-24T08*3a11*3a09.77209386Z))",
+                        "startedAt": "2026-09-24T08:11:09Z"
+                      },
+                      {
+                        "__typename": "StatusContext",
+                        "context": "license/snyk (Collibra - Code (SCM Integration))",
+                        "state": "SUCCESS",
+                        "targetUrl": "https://app.snyk.io/org/collibra-scm/pr-checks/ed704712-de17-4fea-9bcf-8b80b8c31a3e/license",
+                        "createdAt": "2026-09-24T08:11:15Z"
+                      },
+                      {
+                        "__typename": "StatusContext",
+                        "context": "security/snyk (Collibra - Code (SCM Integration))",
+                        "state": "SUCCESS",
+                        "targetUrl": "https://app.snyk.io/org/collibra-scm/pr-checks/7a6f5635-95b0-4e9a-b00b-895bfaa5b899",
+                        "createdAt": "2026-09-24T08:11:14Z"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}
