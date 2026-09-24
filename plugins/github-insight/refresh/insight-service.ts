@@ -1,6 +1,12 @@
 import type { InsightResult } from "../contract";
 import type { PrInsight } from "../core/overview";
 import type { PullRequestRef } from "../core/pr-ref";
+import {
+  buildSummary,
+  shouldWriteSummary,
+  type PrSummary,
+  type WrittenSummary,
+} from "../core/summary";
 import { ghFailureText, type GhFailure } from "../github/gh-failure";
 
 export const POLL_INTERVAL_MS = 60_000;
@@ -35,17 +41,24 @@ export interface InsightServiceDeps {
   resolvePr(environmentId: string): Promise<PrResolution>;
   fetchInsight(target: PrTarget): Promise<PrInsight>;
   publish(threadIds: string[]): void;
+  writeSummary(threadId: string, summary: PrSummary): Promise<void>;
+  removeSummary(threadId: string): Promise<void>;
   warn(message: string): void;
 }
 
 type CacheEntry = (
   | { good: { insight: PrInsight; refreshedAt: number }; error: string | null }
   | { good: null; error: string }
-) & { threadIds: Set<string> };
+) & { summaryError: string | null; threadIds: Set<string> };
 
 interface PrGroup {
   target: PrTarget;
   threadIds: Set<string>;
+}
+
+interface ThreadsByPr {
+  groups: PrGroup[];
+  threadIdsWithoutPr: string[];
 }
 
 function prKey({ owner, repo, number }: PullRequestRef): string {
@@ -62,6 +75,18 @@ function sameData(previous: CacheEntry | undefined, next: CacheEntry): boolean {
   const data = (entry: CacheEntry) =>
     JSON.stringify({ insight: entry.good?.insight ?? null, error: entry.error });
   return data(previous) === data(next);
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+// Other plugins and agents can read the summary, so it gets a fixed text
+// instead of raw gh stderr.
+function summaryErrorText(error: unknown): string {
+  return error instanceof GhFailureError && error.failure.kind !== "failed"
+    ? error.message
+    : "refresh failed";
 }
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
@@ -93,6 +118,8 @@ async function forEachLimited<T>(
 export function createInsightService(deps: InsightServiceDeps) {
   const entries = new Map<string, CacheEntry>();
   const running = new Map<string, { group: PrGroup; done: Promise<CacheEntry> }>();
+  const writtenSummaries = new Map<string, WrittenSummary>();
+  const removedSummaries = new Set<string>();
   let pausedUntil = 0;
 
   const isPaused = () => Date.now() < pausedUntil;
@@ -104,6 +131,43 @@ export function createInsightService(deps: InsightServiceDeps) {
     }
   }
 
+  async function writeSummaries(summary: PrSummary, threadIds: Iterable<string>) {
+    const now = Date.now();
+    await Promise.all(
+      [...threadIds].map(async (threadId) => {
+        if (!shouldWriteSummary(writtenSummaries.get(threadId), summary, now)) return;
+        try {
+          await deps.writeSummary(threadId, summary);
+          writtenSummaries.set(threadId, { summary, writtenAt: now });
+          removedSummaries.delete(threadId);
+        } catch (error) {
+          deps.warn(`PR summary write for thread ${threadId} failed: ${errorText(error)}`);
+        }
+      }),
+    );
+  }
+
+  async function removeSummaries(threadIds: Iterable<string>) {
+    await Promise.all(
+      [...threadIds].map(async (threadId) => {
+        if (removedSummaries.has(threadId)) return;
+        try {
+          await deps.removeSummary(threadId);
+          removedSummaries.add(threadId);
+          writtenSummaries.delete(threadId);
+        } catch (error) {
+          deps.warn(`PR summary removal for thread ${threadId} failed: ${errorText(error)}`);
+        }
+      }),
+    );
+  }
+
+  function syncSummaries(entry: CacheEntry): Promise<void> {
+    if (entry.good === null) return removeSummaries(entry.threadIds);
+    const summary = buildSummary({ ...entry.good, error: entry.summaryError });
+    return writeSummaries(summary, entry.threadIds);
+  }
+
   async function runRefresh(key: string, group: PrGroup): Promise<CacheEntry> {
     const previous = entries.get(key);
     let next: CacheEntry;
@@ -112,18 +176,21 @@ export function createInsightService(deps: InsightServiceDeps) {
       next = {
         good: { insight, refreshedAt: Date.now() },
         error: null,
+        summaryError: null,
         threadIds: group.threadIds,
       };
     } catch (error) {
       pauseAfter(error);
-      const message = error instanceof Error ? error.message : String(error);
+      const message = errorText(error);
       deps.warn(`PR insight for ${key} failed: ${message}`);
+      const failure = { summaryError: summaryErrorText(error), threadIds: group.threadIds };
       next = previous?.good
-        ? { good: previous.good, error: message, threadIds: group.threadIds }
-        : { good: null, error: message, threadIds: group.threadIds };
+        ? { good: previous.good, error: message, ...failure }
+        : { good: null, error: message, ...failure };
     }
     entries.set(key, next);
     if (!sameData(previous, next)) deps.publish([...next.threadIds]);
+    await syncSummaries(next);
     return next;
   }
 
@@ -144,10 +211,14 @@ export function createInsightService(deps: InsightServiceDeps) {
     return !target.openOnBb && (state === "merged" || state === "closed");
   }
 
-  async function groupThreadsByPr(): Promise<PrGroup[]> {
+  async function groupThreadsByPr(): Promise<ThreadsByPr> {
     const threadsByEnvironment = new Map<string, string[]>();
+    const threadIdsWithoutPr: string[] = [];
     for (const thread of await deps.listThreads()) {
-      if (thread.environmentId === null) continue;
+      if (thread.environmentId === null) {
+        threadIdsWithoutPr.push(thread.id);
+        continue;
+      }
       const threads = threadsByEnvironment.get(thread.environmentId) ?? [];
       threads.push(thread.id);
       threadsByEnvironment.set(thread.environmentId, threads);
@@ -156,6 +227,7 @@ export function createInsightService(deps: InsightServiceDeps) {
     await Promise.all(
       [...threadsByEnvironment].map(async ([environmentId, threadIds]) => {
         const resolution = await deps.resolvePr(environmentId);
+        if (resolution.kind === "no_pr") threadIdsWithoutPr.push(...threadIds);
         if (resolution.kind !== "pr") return;
         const key = prKey(resolution.target.ref);
         const group = groups.get(key) ?? { target: resolution.target, threadIds: new Set() };
@@ -163,15 +235,19 @@ export function createInsightService(deps: InsightServiceDeps) {
         groups.set(key, group);
       }),
     );
-    return [...groups.values()];
+    return { groups: [...groups.values()], threadIdsWithoutPr };
   }
 
   async function poll(): Promise<void> {
     if (isPaused()) return;
-    const due = (await groupThreadsByPr()).filter((group) => !isSettled(group.target));
-    await forEachLimited(due, MAX_PARALLEL_REFRESHES, async (group) => {
-      if (!isPaused()) await refreshPr(group);
-    });
+    const { groups, threadIdsWithoutPr } = await groupThreadsByPr();
+    const due = groups.filter((group) => !isSettled(group.target));
+    await Promise.all([
+      removeSummaries(threadIdsWithoutPr),
+      forEachLimited(due, MAX_PARALLEL_REFRESHES, async (group) => {
+        if (!isPaused()) await refreshPr(group);
+      }),
+    ]);
   }
 
   async function resolveThread(threadId: string): Promise<PrResolution> {
@@ -212,7 +288,7 @@ export function createInsightService(deps: InsightServiceDeps) {
         try {
           await poll();
         } catch (error) {
-          deps.warn(`PR poll failed: ${error instanceof Error ? error.message : String(error)}`);
+          deps.warn(`PR poll failed: ${errorText(error)}`);
         }
         await sleep(Math.max(POLL_INTERVAL_MS, pausedUntil - Date.now()), signal);
       }
