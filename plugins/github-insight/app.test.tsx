@@ -32,6 +32,8 @@ const emptyInsight: PrInsight = { pr, blockers: [], reviewers: [], checks: [] };
 const unusedReviewRpc = {
   getReview: () => ({ kind: "no_pr" as const }),
   sendToAgent: () => ({ kind: "error" as const, message: "unused" }),
+  reply: () => ({ kind: "post_failed" as const, message: "unused" }),
+  setResolved: () => ({ kind: "error" as const, message: "unused" }),
 };
 
 const REFRESHED_AT = Date.parse("2026-09-24T10:00:00Z");

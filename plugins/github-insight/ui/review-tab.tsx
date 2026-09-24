@@ -13,6 +13,7 @@ import {
 import { Notice, RefreshButton, RefreshError, SendToAgentButton } from "./feedback";
 import { PrFileDiff } from "./file-diff";
 import { OutdatedThreads } from "./outdated-threads";
+import { ThreadActionsProvider } from "./thread-actions";
 import { ThreadSelectionContext, useThreadSelectionState } from "./thread-selection";
 import { useThreadResult } from "./use-thread-result";
 
@@ -32,7 +33,7 @@ function useReview(threadId: string) {
 }
 
 export function ReviewTab({ threadId }: { threadId: string }) {
-  const { result, refreshing, refresh } = useReview(threadId);
+  const { result, refreshing, refresh, reload } = useReview(threadId);
   if (result === null) return <Padded><Notice>Loading pull request…</Notice></Padded>;
   if (result.kind === "no_pr") {
     return <Padded><Notice>No pull request for this thread</Notice></Padded>;
@@ -45,15 +46,16 @@ export function ReviewTab({ threadId }: { threadId: string }) {
     );
   }
   return (
-    <ReviewContent
-      key={threadId}
-      threadId={threadId}
-      files={result.files}
-      threads={result.threads}
-      drafts={result.drafts}
-      refreshing={refreshing}
-      refresh={refresh}
-    />
+    <ThreadActionsProvider key={threadId} threadId={threadId} onWritten={reload}>
+      <ReviewContent
+        threadId={threadId}
+        files={result.files}
+        threads={result.threads}
+        drafts={result.drafts}
+        refreshing={refreshing}
+        refresh={refresh}
+      />
+    </ThreadActionsProvider>
   );
 }
 
