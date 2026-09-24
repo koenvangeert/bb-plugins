@@ -1,14 +1,14 @@
 ## 1. Spikes
 
 - [x] 1.1 In the "Review" tab, render one file with `FileDiff` from the shimmed `@pierre/diffs/react` and one line annotation with a React button; verify in the running app that the code theme matches bb's diff panel and the button is clickable, and record the result (D4 or fallback) in design.md
-- [ ] 1.2 Record `gh api --paginate repos/<o>/<r>/pulls/<n>/files` and the review threads GraphQL response for an open PR that has an open thread, a resolved thread, an outdated thread, and a thread with replies; trim them and save them under `plugins/github-insight/test/fixtures/`; verify they parse as JSON and hold those 4 cases
+- [x] 1.2 Record `gh api --paginate repos/<o>/<r>/pulls/<n>/files` and the review threads GraphQL response for an open PR that has an open thread, a resolved thread, an outdated thread, and a thread with replies; trim them and save them under `plugins/github-insight/test/fixtures/`; verify they parse as JSON and hold those 4 cases
 
 ## 2. Pure core
 
 - [x] 2.1 Extract the PR lookup from `getInsight` in `server.ts` into a `resolvePr(threadId)` function used by both features; verify the existing tests still pass with `npm test`
 - [x] 2.2 Implement `parsePrFiles` (path, status, patch or null) and verify tests: a normal file, a renamed file, and a file without a patch
-- [ ] 2.3 Implement `parseReviewThreads` (id, resolved, outdated, path, line, originalLine, side, comments with author, time, body, url, diffHunk) and verify tests on the fixture for all 4 cases
-- [ ] 2.4 Implement `placeThreads(files, threads)` that splits threads into placed (file, side, line) and outdated; verify tests: RIGHT maps to `additions`, LEFT to `deletions`, `isOutdated`, null line, line outside the hunks, and file not in the PR
+- [x] 2.3 Implement `parseReviewThreads` (id, resolved, outdated, path, line, originalLine, side, comments with author, time, body, url, diffHunk) and verify tests on the fixture for all 4 cases
+- [x] 2.4 Implement `placeThreads(files, threads)` that splits threads into placed (file, side, line) and outdated; verify tests: RIGHT maps to `additions`, LEFT to `deletions`, `isOutdated`, null line, line outside the hunks, and file not in the PR
 - [ ] 2.5 Implement `buildAgentPrompt(threads)` and verify a snapshot test: it holds each thread id, path, line, snippet, and comments, and the three rules (fix code, save draft with the CLI command, do not post or resolve)
 
 ## 3. GitHub access (host)

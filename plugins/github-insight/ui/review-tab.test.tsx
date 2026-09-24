@@ -3,14 +3,38 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, within } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginThreadPanelProps } from "@get-bb/plugin-sdk/app";
-import type { FileDiffMetadata } from "@pierre/diffs";
+import type { ReactNode } from "react";
+import type { DiffLineAnnotation, FileDiffMetadata } from "@pierre/diffs";
 import type { ReviewResult, rpcContract } from "../contract";
 import { parsePrFiles } from "../core/pr-files";
+import { parseReviewThreads } from "../core/review-threads";
+import { placeThreads, type ThreadPlacement } from "../core/thread-placement";
 import prFiles from "../test/fixtures/pr-1-files.json";
+import threadedPrFiles from "../test/fixtures/pr-25259-files.json";
+import reviewThreads from "../test/fixtures/pr-25259-review-threads.json";
 
 vi.mock("@pierre/diffs/react", () => ({
-  FileDiff: ({ fileDiff }: { fileDiff: FileDiffMetadata }) => (
-    <pre data-testid="file-diff" data-path={fileDiff.name} data-type={fileDiff.type} />
+  FileDiff: ({
+    fileDiff,
+    lineAnnotations = [],
+    renderAnnotation,
+  }: {
+    fileDiff: FileDiffMetadata;
+    lineAnnotations?: DiffLineAnnotation<unknown>[];
+    renderAnnotation?: (annotation: DiffLineAnnotation<unknown>) => ReactNode;
+  }) => (
+    <div data-testid="file-diff" data-path={fileDiff.name} data-type={fileDiff.type}>
+      {lineAnnotations.map((annotation, index) => (
+        <div
+          key={index}
+          data-testid="line-annotation"
+          data-side={annotation.side}
+          data-line={annotation.lineNumber}
+        >
+          {renderAnnotation?.(annotation)}
+        </div>
+      ))}
+    </div>
   ),
 }));
 
@@ -34,7 +58,15 @@ const reviewTab = app.threadPanelActions.find((action) => action.id === "review"
 
 afterEach(cleanup);
 
-const recorded: ReviewResult = { kind: "ok", files: parsePrFiles(prFiles) };
+const noThreads: ThreadPlacement = { placed: [], outdated: [] };
+const recorded: ReviewResult = { kind: "ok", files: parsePrFiles(prFiles), threads: noThreads };
+
+const threadedFiles = parsePrFiles(threadedPrFiles);
+const threaded = {
+  kind: "ok",
+  files: threadedFiles,
+  threads: placeThreads(threadedFiles, parseReviewThreads([reviewThreads])),
+} satisfies ReviewResult;
 
 function renderTab(...results: ReviewResult[]) {
   let call = 0;
@@ -106,7 +138,7 @@ describe("Review tab", () => {
   });
 
   it("loads again on refresh and shows the new files", async () => {
-    const slot = renderTab(recorded, { kind: "ok", files: recorded.files.slice(0, 1) });
+    const slot = renderTab(recorded, { ...recorded, files: recorded.files.slice(0, 1) });
 
     await slot.findByText("3 files changed");
     fireEvent.click(slot.getByRole("button", { name: "Refresh" }));
@@ -116,11 +148,133 @@ describe("Review tab", () => {
 
   it("shows the diff of a file that gets its patch on refresh", async () => {
     const withoutPatch = recorded.files.map((file) => ({ ...file, patch: null }));
-    const slot = renderTab({ kind: "ok", files: withoutPatch }, recorded);
+    const slot = renderTab({ ...recorded, files: withoutPatch }, recorded);
 
     await slot.findAllByText("Diff not available");
     fireEvent.click(slot.getByRole("button", { name: "Refresh" }));
 
     expect(await slot.findAllByTestId("file-diff")).toHaveLength(2);
+  });
+});
+
+describe("Review tab threads", () => {
+  const OPEN_THREAD = "There's no wait for the new row to mount";
+  const REPLY = "Agreed, removed.";
+  const RESOLVED_REPLY = "False positive.";
+
+  function annotationWith(slot: ReturnType<typeof renderTab>, text: string) {
+    return slot
+      .getAllByTestId("line-annotation")
+      .find((annotation) => annotation.textContent?.includes(text));
+  }
+
+  function withResolved(threadId: string): ReviewResult {
+    const resolve = <T extends { id: string; resolved: boolean }>(thread: T) =>
+      thread.id === threadId ? { ...thread, resolved: true } : thread;
+    return {
+      ...threaded,
+      threads: {
+        placed: threaded.threads.placed.map((placed) => ({ ...placed, thread: resolve(placed.thread) })),
+        outdated: threaded.threads.outdated.map(resolve),
+      },
+    };
+  }
+
+  it("shows a thread below its line on the new side of its file", async () => {
+    const slot = renderTab(threaded);
+
+    await slot.findAllByTestId("line-annotation");
+    const annotation = annotationWith(slot, OPEN_THREAD)!;
+    expect(annotation.dataset).toMatchObject({ side: "additions", line: "46" });
+    expect(annotation.closest("[data-testid=file-diff]")!.getAttribute("data-path")).toBe(
+      "apps/shell/e2e/catalog/integrations/components/asset/generic-configuration/createDatabricksOutboundSyncConfigurationComponent.ts",
+    );
+  });
+
+  it("shows each comment with its author, time, and Markdown body, in order", async () => {
+    const slot = renderTab(threaded);
+
+    await slot.findAllByTestId("line-annotation");
+    const thread = within(annotationWith(slot, OPEN_THREAD)!);
+    const bodies = thread.getAllByTestId("bb-markdown").map((body) => body.textContent);
+    expect(bodies).toHaveLength(2);
+    expect(bodies[0]).toMatch(/^There's no wait/);
+    expect(thread.getByText("a-bandziuk")).toBeTruthy();
+    expect(thread.getByText("RuslanPleskunCollibra")).toBeTruthy();
+    expect(
+      thread.getAllByRole("time").map((time) => time.getAttribute("datetime")),
+    ).toEqual(["2026-09-18T14:34:40.000Z", "2026-09-18T15:17:49.000Z"]);
+  });
+
+  it("shows an outdated thread at the top with its path, original line, and snippet", async () => {
+    const slot = renderTab(threaded);
+
+    const section = within(await slot.findByRole("region", { name: "Outdated" }));
+    expect(
+      section.getByText("apps/shell/e2e/catalog/integrations/components/helpers/clickWithScrollHelper.ts"),
+    ).toBeTruthy();
+    expect(section.getByText("Line 32")).toBeTruthy();
+    const snippet = section.getByTestId("bb-diff");
+    expect(snippet.textContent).toMatch(/^@@ -10,22 \+14,31 @@/);
+    expect(snippet.getAttribute("data-path")).toBe(
+      "apps/shell/e2e/catalog/integrations/components/helpers/clickWithScrollHelper.ts",
+    );
+    expect(section.getByText(REPLY, { exact: false })).toBeTruthy();
+  });
+
+  it("hides resolved threads", async () => {
+    const slot = renderTab(withResolved("PRRT_kwDOHI7l-86jxula"));
+
+    await slot.findAllByTestId("line-annotation");
+    expect(annotationWith(slot, OPEN_THREAD)).toBeUndefined();
+    expect(slot.queryByText(RESOLVED_REPLY, { exact: false })).toBeNull();
+  });
+
+  it("shows resolved threads collapsed when 'Show resolved' is on, and expands one", async () => {
+    const slot = renderTab(withResolved("PRRT_kwDOHI7l-86jxula"));
+
+    fireEvent.click(await slot.findByRole("checkbox", { name: "Show resolved" }));
+
+    const collapsed = annotationWith(slot, "Resolved")!;
+    expect(collapsed.dataset).toMatchObject({ side: "additions", line: "46" });
+    expect(within(collapsed).queryByTestId("bb-markdown")).toBeNull();
+    const toggle = within(collapsed).getByRole("button", { name: /a-bandziuk.*Resolved/ });
+    fireEvent.click(toggle);
+    expect(within(collapsed).getAllByTestId("bb-markdown")).toHaveLength(2);
+
+    const outdated = within(slot.getByRole("region", { name: "Outdated" }));
+    expect(outdated.getByRole("button", { name: /wiz-22f56a2082.*Resolved/ })).toBeTruthy();
+  });
+
+  it("counts open threads and outdated open threads", async () => {
+    const slot = renderTab(threaded);
+
+    expect(await slot.findByText("3 open")).toBeTruthy();
+    expect(slot.getByText("1 outdated")).toBeTruthy();
+  });
+
+  it("leaves resolved threads out of the counts", async () => {
+    const slot = renderTab(withResolved("PRRT_kwDOHI7l-86jx0SN"));
+
+    expect(await slot.findByText("2 open")).toBeTruthy();
+    expect(slot.getByText("0 outdated")).toBeTruthy();
+  });
+
+  it("links to GitHub when a thread has more comments than were loaded", async () => {
+    const [first, ...rest] = threaded.threads.placed;
+    const slot = renderTab({
+      ...threaded,
+      threads: { ...threaded.threads, placed: [{ ...first!, thread: { ...first!.thread, hasMoreComments: true } }, ...rest] },
+    });
+
+    const link = await slot.findByRole("link", { name: "More comments on GitHub" });
+    expect(link.getAttribute("href")).toBe(first!.thread.comments.at(-1)!.url);
+  });
+
+  it("has no Outdated section when no outdated thread shows", async () => {
+    const slot = renderTab(withResolved("PRRT_kwDOHI7l-86jx0SN"));
+
+    await slot.findByText("2 open");
+    expect(slot.queryByRole("region", { name: "Outdated" })).toBeNull();
   });
 });
