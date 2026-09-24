@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { UrlLink, useRpc } from "@get-bb/plugin-sdk/app";
 import type { InsightResult, rpcContract } from "../contract";
 import type { Check, CheckStatus } from "../core/checks";
+import type { CheckFailure } from "../core/failure";
 import type { PrInsight } from "../core/overview";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
@@ -175,15 +176,44 @@ function CheckRows({ checks }: { checks: readonly Check[] }) {
 function CheckRow({ check }: { check: Check }) {
   const icon = STATUS_ICON[check.status];
   return (
-    <li className="flex min-w-0 items-center gap-2 py-1 text-sm">
-      <Icon name={icon.name} className={cn("size-4 shrink-0", icon.className)} />
-      {check.url === null ? (
-        <span className="truncate">{check.name}</span>
-      ) : (
-        <UrlLink href={check.url} className="truncate underline-offset-2 hover:underline">
-          {check.name}
-        </UrlLink>
-      )}
+    <li className="flex min-w-0 flex-col gap-1 py-1 text-sm">
+      <div className="flex min-w-0 items-center gap-2">
+        <Icon name={icon.name} className={cn("size-4 shrink-0", icon.className)} />
+        {check.url === null ? (
+          <span className="truncate">{check.name}</span>
+        ) : (
+          <UrlLink href={check.url} className="truncate underline-offset-2 hover:underline">
+            {check.name}
+          </UrlLink>
+        )}
+      </div>
+      {check.failure !== null && <CheckFailureDetail failure={check.failure} />}
     </li>
+  );
+}
+
+function CheckFailureDetail({ failure }: { failure: CheckFailure }) {
+  const hiddenCount = failure.annotationCount - failure.annotations.length;
+  return (
+    <div className="flex min-w-0 flex-col gap-1 pl-6 text-xs text-muted-foreground">
+      {failure.reason !== "" && (
+        <p data-testid="check-reason" className="line-clamp-3 break-words">
+          {failure.reason}
+        </p>
+      )}
+      {failure.annotations.length > 0 && (
+        <ul className="flex flex-col gap-0.5">
+          {failure.annotations.map((annotation, index) => (
+            <li key={index} data-testid="check-annotation" className="min-w-0 break-words">
+              <span className="font-mono">
+                {annotation.path}:{annotation.line}
+              </span>{" "}
+              {annotation.message}
+            </li>
+          ))}
+        </ul>
+      )}
+      {hiddenCount > 0 && <p>{hiddenCount} more</p>}
+    </div>
   );
 }

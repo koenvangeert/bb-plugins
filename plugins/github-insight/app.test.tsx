@@ -11,8 +11,12 @@ const prTab = app.threadPanelActions.find((action) => action.id === "pr")!;
 
 afterEach(cleanup);
 
-function check(name: string, status: Check["status"]): Check {
-  return { name, status, url: `https://github.com/o/r/runs/${name}` };
+function check(
+  name: string,
+  status: Check["status"],
+  failure: Check["failure"] = null,
+): Check {
+  return { name, status, url: `https://github.com/o/r/runs/${name}`, failure };
 }
 
 const pr = {
@@ -28,8 +32,14 @@ const insight: InsightResult = {
     pr,
     checks: [
       check("lint", "passed"),
-      check("a11y-test", "failed"),
-      check("e2e", "cancelled"),
+      check("a11y-test", "failed", {
+        reason: "Process completed with exit code 1.",
+        annotations: [
+          { path: ".github", line: 4092, message: "Process completed with exit code 1." },
+        ],
+        annotationCount: 1,
+      }),
+      check("e2e", "cancelled", { reason: "", annotations: [], annotationCount: 0 }),
       check("build", "running"),
       check("container", "skipped"),
       check("typecheck", "passed"),
@@ -109,6 +119,47 @@ describe("PR tab", () => {
     fireEvent.click(within(passed).getByText("2 passed"));
     expect(passed.open).toBe(true);
     expect(within(passed).getByText("lint")).toBeTruthy();
+  });
+
+  it("shows the reason and annotations of a failed check", async () => {
+    const slot = renderTab(insight);
+
+    const row = (await slot.findByRole("link", { name: "a11y-test" })).closest("li")!;
+    expect(within(row).getByTestId("check-reason").textContent).toBe(
+      "Process completed with exit code 1.",
+    );
+    expect(within(row).getByText(".github:4092")).toBeTruthy();
+  });
+
+  it("keeps the link of a cancelled check without reason text", async () => {
+    const slot = renderTab(insight);
+
+    const row = (await slot.findByRole("link", { name: "e2e" })).closest("li")!;
+    expect(within(row).queryByTestId("check-reason")).toBeNull();
+  });
+
+  it("says how many more annotations there are", async () => {
+    const annotations = Array.from({ length: 5 }, (_, index) => ({
+      path: "src/app.ts",
+      line: index + 1,
+      message: `error ${index + 1}`,
+    }));
+    const slot = renderTab({
+      kind: "ok",
+      insight: {
+        pr,
+        checks: [
+          check("lint", "failed", {
+            reason: "error 1",
+            annotations,
+            annotationCount: 12,
+          }),
+        ],
+      },
+    });
+
+    await slot.findByText("7 more");
+    expect(slot.getAllByTestId("check-annotation")).toHaveLength(5);
   });
 
   it("shows the error text when the insight cannot be read", async () => {

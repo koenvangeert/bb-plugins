@@ -17,8 +17,8 @@ query ($owner: String!, $repo: String!, $number: Int!, $after: String) {
                 pageInfo { hasNextPage endCursor }
                 nodes {
                   __typename
-                  ... on CheckRun { databaseId name status conclusion detailsUrl startedAt }
-                  ... on StatusContext { context state targetUrl createdAt }
+                  ... on CheckRun { id databaseId name status conclusion detailsUrl startedAt title summary }
+                  ... on StatusContext { context state description targetUrl createdAt }
                 }
               }
             }

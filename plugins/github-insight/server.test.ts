@@ -6,6 +6,7 @@ import {
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import pageOne from "./test/fixtures/pr-25337-overview-page-1.json";
 import pageTwo from "./test/fixtures/pr-25337-overview-page-2.json";
+import checkRunDetails from "./test/fixtures/pr-25337-check-run-details.json";
 import plugin from "./server";
 
 type PullRequestResult = Awaited<
@@ -63,9 +64,10 @@ async function setup(options: {
         get: async () => ({ hostId: "host-1" }) as Environment,
       },
     },
-    experimental_callHostRpc: ({ input }) => {
-      const { after } = input as { after: string | null };
+    experimental_callHostRpc: ({ method, input }) => {
       if (options.hostPages === undefined) throw new Error("unexpected call");
+      if (method === "fetchCheckRunDetails") return checkRunDetails;
+      const { after } = input as { after: string | null };
       return options.hostPages(after);
     },
   });
@@ -96,7 +98,7 @@ describe("getInsight", () => {
     expect(harness.experimental_hostRpcCalls).toHaveLength(0);
   });
 
-  it("reads every contexts page through the thread's host", async () => {
+  it("reads every contexts page and the failure details through the thread's host", async () => {
     const harness = await setup({
       environmentId: "env_1",
       pullRequest: availablePullRequest,
@@ -115,6 +117,11 @@ describe("getInsight", () => {
       }),
       expect.objectContaining({
         input: { owner: "collibra", repo: "frontend", number: 25337, after: "MTAw" },
+      }),
+      expect.objectContaining({
+        method: "fetchCheckRunDetails",
+        hostId: "host-1",
+        input: { ids: ["CR_kwDOHI7l-88AAAAZCnAPSQ", "CR_kwDOHI7l-88AAAAZCnoC7g"] },
       }),
     ]);
     expect(result).toMatchObject({
