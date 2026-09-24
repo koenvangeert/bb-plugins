@@ -1,9 +1,11 @@
+import type { SendToAgentResult } from "../contract";
+import { buildAgentPrompt } from "../core/agent-prompt";
 import type { Draft, Drafts } from "../core/drafts";
 import { parsePrFiles, type ReviewFile } from "../core/pr-files";
 import type { PullRequestRef } from "../core/pr-ref";
 import { collectReviewThreads } from "../core/review-threads";
 import type { ReviewUpdated } from "../core/review-updated";
-import { placeThreads, type ThreadPlacement } from "../core/thread-placement";
+import { openThreads, placeThreads, type ThreadPlacement } from "../core/thread-placement";
 import { GhFailureError, ghFailureText } from "../github/gh-failure";
 import type { PrResolution, PrTarget } from "../pr-lookup";
 import type { DraftStore } from "./draft-store";
@@ -25,6 +27,7 @@ interface ReviewServiceDeps {
   fetchReviewThreadsPage(target: PrTarget, after: string | null): Promise<unknown>;
   drafts: DraftStore;
   publish(update: ReviewUpdated): void;
+  sendMessage(threadId: string, text: string): Promise<"sent" | "queued">;
 }
 
 export type ReviewService = ReturnType<typeof createReviewService>;
@@ -59,5 +62,18 @@ export function createReviewService(deps: ReviewServiceDeps) {
     deps.publish({ threadId });
   }
 
-  return { load, saveDraft };
+  async function sendToAgent(threadId: string, reviewThreadIds: readonly string[]): Promise<SendToAgentResult> {
+    const loaded = await load(threadId);
+    if (loaded.kind === "no_pr") return { kind: "error", message: "No pull request for this thread" };
+    if (loaded.kind === "error") return loaded;
+    const selected = new Set(reviewThreadIds);
+    const threads = openThreads(loaded.review.threads).filter(({ thread }) => selected.has(thread.id));
+    if (threads.length === 0) {
+      return { kind: "error", message: "The selected review threads are resolved or gone" };
+    }
+    const delivery = await deps.sendMessage(threadId, buildAgentPrompt(threads));
+    return { kind: "sent", delivery, threadCount: threads.length };
+  }
+
+  return { load, saveDraft, sendToAgent };
 }

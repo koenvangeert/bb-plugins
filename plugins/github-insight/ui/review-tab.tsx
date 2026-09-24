@@ -1,13 +1,19 @@
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
-import type { rpcContract } from "../contract";
+import type { rpcContract, SendToAgentResult } from "../contract";
 import type { Drafts } from "../core/drafts";
 import type { ReviewFile } from "../core/pr-files";
 import { isReviewUpdateFor, REVIEW_UPDATED_CHANNEL } from "../core/review-updated";
-import { openThreadCounts, type PlacedThread, type ThreadPlacement } from "../core/thread-placement";
-import { Notice, RefreshButton, RefreshError } from "./feedback";
+import {
+  openThreadCounts,
+  openThreads,
+  type PlacedThread,
+  type ThreadPlacement,
+} from "../core/thread-placement";
+import { Notice, RefreshButton, RefreshError, SendToAgentButton } from "./feedback";
 import { PrFileDiff } from "./file-diff";
 import { OutdatedThreads } from "./outdated-threads";
+import { ThreadSelectionContext, useThreadSelectionState } from "./thread-selection";
 import { useThreadResult } from "./use-thread-result";
 
 function useReview(threadId: string) {
@@ -40,6 +46,8 @@ export function ReviewTab({ threadId }: { threadId: string }) {
   }
   return (
     <ReviewContent
+      key={threadId}
+      threadId={threadId}
       files={result.files}
       threads={result.threads}
       drafts={result.drafts}
@@ -50,6 +58,7 @@ export function ReviewTab({ threadId }: { threadId: string }) {
 }
 
 interface ReviewContentProps {
+  threadId: string;
   files: readonly ReviewFile[];
   threads: ThreadPlacement;
   drafts: Drafts;
@@ -57,8 +66,11 @@ interface ReviewContentProps {
   refresh: () => void;
 }
 
-function ReviewContent({ files, threads, drafts, refreshing, refresh }: ReviewContentProps) {
+function ReviewContent({ threadId, files, threads, drafts, refreshing, refresh }: ReviewContentProps) {
   const [showResolved, setShowResolved] = useState(false);
+  const openIds = useMemo(() => openThreads(threads).map(({ thread }) => thread.id), [threads]);
+  const { selection, selectedIds, deselect } = useThreadSelectionState(openIds);
+  const agent = useSendToAgent(threadId, deselect);
   const visible = useMemo(() => visibleThreads(threads, showResolved), [threads, showResolved]);
   const placedByPath = useMemo(() => groupByPath(visible.placed), [visible.placed]);
   const counts = useMemo(() => openThreadCounts(threads), [threads]);
@@ -76,21 +88,65 @@ function ReviewContent({ files, threads, drafts, refreshing, refresh }: ReviewCo
           />
           Show resolved
         </label>
+        {agent.outcome?.result.kind === "sent" && (
+          <span role="status">{sentText(agent.outcome.result, agent.outcome.requested)}</span>
+        )}
+        <SendToAgentButton
+          count={selectedIds.length}
+          sending={agent.sending}
+          send={() => agent.send(selectedIds)}
+        />
         <RefreshButton refreshing={refreshing} refresh={refresh} />
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <OutdatedThreads threads={visible.outdated} drafts={drafts} />
-        {files.map((file) => (
-          <PrFileDiff
-            key={file.path}
-            file={file}
-            threads={placedByPath.get(file.path) ?? NO_THREADS}
-            drafts={drafts}
-          />
-        ))}
-      </div>
+      {agent.outcome?.result.kind === "error" && (
+        <div role="alert" className="shrink-0 border-b border-destructive/40 px-3 py-2 text-sm text-destructive">
+          {agent.outcome.result.message}
+        </div>
+      )}
+      <ThreadSelectionContext.Provider value={selection}>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <OutdatedThreads threads={visible.outdated} drafts={drafts} />
+          {files.map((file) => (
+            <PrFileDiff
+              key={file.path}
+              file={file}
+              threads={placedByPath.get(file.path) ?? NO_THREADS}
+              drafts={drafts}
+            />
+          ))}
+        </div>
+      </ThreadSelectionContext.Provider>
     </div>
   );
+}
+
+function useSendToAgent(threadId: string, onSent: (reviewThreadIds: readonly string[]) => void) {
+  const rpc = useRpc<typeof rpcContract>();
+  const [sending, setSending] = useState(false);
+  const [outcome, setOutcome] = useState<{ result: SendToAgentResult; requested: number } | null>(null);
+
+  async function send(reviewThreadIds: readonly string[]) {
+    setSending(true);
+    setOutcome(null);
+    let result: SendToAgentResult;
+    try {
+      result = await rpc.call("sendToAgent", { threadId, reviewThreadIds: [...reviewThreadIds] });
+    } catch (error) {
+      result = { kind: "error", message: error instanceof Error ? error.message : String(error) };
+    }
+    if (result.kind === "sent") onSent(reviewThreadIds);
+    setOutcome({ result, requested: reviewThreadIds.length });
+    setSending(false);
+  }
+
+  return { sending, outcome, send };
+}
+
+function sentText(result: Extract<SendToAgentResult, { kind: "sent" }>, requested: number): string {
+  const count = result.threadCount < requested ? `${result.threadCount} of ${requested} ` : "";
+  return result.delivery === "queued"
+    ? `Queued ${count}until the agent is idle`
+    : `Sent ${count}to agent`;
 }
 
 const NO_THREADS: readonly PlacedThread[] = [];

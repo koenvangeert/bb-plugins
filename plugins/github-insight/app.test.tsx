@@ -29,6 +29,11 @@ const pr = {
 
 const emptyInsight: PrInsight = { pr, blockers: [], reviewers: [], checks: [] };
 
+const unusedReviewRpc = {
+  getReview: () => ({ kind: "no_pr" as const }),
+  sendToAgent: () => ({ kind: "error" as const, message: "unused" }),
+};
+
 const REFRESHED_AT = Date.parse("2026-09-24T10:00:00Z");
 
 function ok(insight: PrInsight, error: string | null = null): InsightResult {
@@ -69,7 +74,7 @@ function renderTab(
   return renderSlot<PluginThreadPanelProps, typeof rpcContract>(
     prTab,
     { threadId: "thr_1", params: null },
-    { rpc: { getInsight, refresh, getReview: () => ({ kind: "no_pr" }) } },
+    { rpc: { getInsight, refresh, ...unusedReviewRpc } },
   );
 }
 
@@ -329,7 +334,7 @@ function renderBanner(result: InsightResult | (() => InsightResult)) {
     banner,
     {},
     {
-      rpc: { getInsight, refresh: getInsight, getReview: () => ({ kind: "no_pr" }) },
+      rpc: { getInsight, refresh: getInsight, ...unusedReviewRpc },
       composer: { scope: { kind: "thread", threadId: "thr_1" } },
       openThreadPanel: () => true,
     },

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const MAX_THREAD_PAGES = 5;
+export const MAX_COMMENT_BODY_CHARS = 4000;
 
 const threadsPageSchema = z.object({
   data: z.object({
@@ -61,6 +62,11 @@ export const reviewThreadSchema = z.object({
   hasMoreComments: z.boolean(),
 });
 export type ReviewThread = z.infer<typeof reviewThreadSchema>;
+
+export function capCommentBody(body: string): string {
+  if (body.length <= MAX_COMMENT_BODY_CHARS) return body;
+  return `${body.slice(0, MAX_COMMENT_BODY_CHARS)}\n[cut at ${MAX_COMMENT_BODY_CHARS} characters]`;
+}
 
 const GHOST_AUTHOR = "ghost";
 
