@@ -13,6 +13,7 @@ import { createInsightService } from "./refresh/insight-service";
 import { createDraftStore } from "./review/draft-store";
 import { createReviewCli } from "./review/review-cli";
 import { createReviewService } from "./review/review-service";
+import { createReviewWrites } from "./review/review-writes";
 
 export type { rpcContract } from "./contract";
 
@@ -60,6 +61,14 @@ export default async function plugin(bb: BbPluginApi) {
     publish: (update) => bb.realtime.publish(REVIEW_UPDATED_CHANNEL, update),
   });
 
+  const writes = createReviewWrites({
+    resolvePr,
+    replyToThread: async ({ hostId }, threadId, body) =>
+      unwrap(await host.call("replyToThread", { threadId, body }, { hostId })),
+    setThreadResolved: async ({ hostId }, threadId, resolved) =>
+      unwrap(await host.call("setThreadResolved", { threadId, resolved }, { hostId })),
+  });
+
   async function getReview(threadId: string): Promise<ReviewResult> {
     const load = await review.load(threadId);
     return load.kind === "ok" ? { kind: "ok", ...load.review } : load;
@@ -69,6 +78,8 @@ export default async function plugin(bb: BbPluginApi) {
     getInsight: ({ threadId }) => service.getInsight(threadId),
     refresh: ({ threadId }) => service.refresh(threadId),
     getReview: ({ threadId }) => getReview(threadId),
+    reply: (request) => writes.reply(request),
+    setResolved: (request) => writes.setResolved(request),
   });
 
   bb.cli.register(
