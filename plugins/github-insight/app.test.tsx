@@ -61,6 +61,12 @@ const insight = ok({
     ],
 });
 
+const noReview = {
+  getReview: () => ({ kind: "no_pr" }) as const,
+  reply: () => ({ kind: "post_failed", message: "unexpected" }) as const,
+  setResolved: () => ({ kind: "error", message: "unexpected" }) as const,
+};
+
 function renderTab(
   result: InsightResult | (() => InsightResult),
   refresh: () => InsightResult | Promise<InsightResult> = () => ({ kind: "no_pr" }),
@@ -69,7 +75,7 @@ function renderTab(
   return renderSlot<PluginThreadPanelProps, typeof rpcContract>(
     prTab,
     { threadId: "thr_1", params: null },
-    { rpc: { getInsight, refresh, getReview: () => ({ kind: "no_pr" }) } },
+    { rpc: { getInsight, refresh, ...noReview } },
   );
 }
 
@@ -329,7 +335,7 @@ function renderBanner(result: InsightResult | (() => InsightResult)) {
     banner,
     {},
     {
-      rpc: { getInsight, refresh: getInsight, getReview: () => ({ kind: "no_pr" }) },
+      rpc: { getInsight, refresh: getInsight, ...noReview },
       composer: { scope: { kind: "thread", threadId: "thr_1" } },
       openThreadPanel: () => true,
     },

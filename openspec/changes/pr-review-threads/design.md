@@ -107,6 +107,8 @@ server                                    host (gh on the environment's host)
 
 - [Direct `@pierre/diffs` import is not the SDK's advised path, and the theme or patch handling can drift from bb's view] → Spike first (task 1.1). Keep all `@pierre/diffs` use in one component file. Fallback in D4.
 - [The user has a pending review on GitHub, and `addPullRequestReviewThreadReply` adds the reply to that pending review instead of posting it] → Test it in task 3.3. If it happens, show "Reply added to your pending review" and link to the PR. Do not try to submit the user's pending review.
+  - **Result (task 3.3, 2026-09-25): it happens.** On a test PR with a pending review, the reply came back with `comment.state: PENDING`, in the same review as the pending comment. Nobody else can see it until the user submits that review. When the user deletes the pending review, the reply is deleted with it. `resolveReviewThread` and `unresolveReviewThread` work at once, also with a pending review.
+  - The mutation asks for `comment { state }`. For `PENDING`, the `reply` RPC returns the PR url in `pendingReviewUrl`, and the tab shows "Reply added to your pending review." with a link to the PR.
 - [Replies show under the user's name, also when the agent wrote the draft] → The user must click "Post". The draft is marked "Draft from agent" until then. The agent prompt tells the agent not to post.
 - [The agent can still run `gh` and post directly] → The plugin cannot block that. The prompt rule is the only guard. This is written in the plugin README.
 - [Large PRs (many files, big patches) make the tab slow] → Files render lazily as they scroll into view (virtualized list, or collapsed files above 50 files). No hard limit in v1.

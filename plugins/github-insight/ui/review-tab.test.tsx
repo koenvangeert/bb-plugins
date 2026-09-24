@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, within } from "@testing-library/react";
+import { cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginThreadPanelProps } from "@get-bb/plugin-sdk/app";
 import type { ReactNode } from "react";
 import type { DiffLineAnnotation, FileDiffMetadata } from "@pierre/diffs";
-import type { ReviewResult, rpcContract } from "../contract";
+import type { ReplyResult, ReviewResult, rpcContract, SetResolvedResult } from "../contract";
 import { parsePrFiles } from "../core/pr-files";
 import { parseReviewThreads } from "../core/review-threads";
 import { placeThreads, type ThreadPlacement } from "../core/thread-placement";
@@ -69,7 +69,16 @@ const threaded = {
   drafts: {},
 } satisfies ReviewResult;
 
+interface WriteHandlers {
+  reply?: () => ReplyResult | Promise<ReplyResult>;
+  setResolved?: () => SetResolvedResult | Promise<SetResolvedResult>;
+}
+
 function renderTab(...results: ReviewResult[]) {
+  return renderTabWith({}, ...results);
+}
+
+function renderTabWith(writes: WriteHandlers, ...results: ReviewResult[]) {
   let call = 0;
   const getReview = () => results[Math.min(call++, results.length - 1)]!;
   return renderSlot<PluginThreadPanelProps, typeof rpcContract>(
@@ -80,6 +89,8 @@ function renderTab(...results: ReviewResult[]) {
         getReview,
         getInsight: () => ({ kind: "no_pr" }),
         refresh: () => ({ kind: "no_pr" }),
+        reply: writes.reply ?? (() => ({ kind: "posted", pendingReviewUrl: null, resolveError: null })),
+        setResolved: writes.setResolved ?? (() => ({ kind: "ok" })),
       },
     },
   );
@@ -296,7 +307,8 @@ describe("Review tab drafts", () => {
     expect(section.textContent).toContain("Renamed in abc123");
     const card = section.closest("article")!;
     expect(card.textContent).toContain("There's no wait for the new row to mount");
-    expect(card.lastElementChild).toBe(section);
+    const lastComment = within(card).getAllByTestId("bb-markdown").at(-1)!;
+    expect(lastComment.compareDocumentPosition(section) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("shows the draft of an outdated thread", async () => {
@@ -333,5 +345,188 @@ describe("Review tab drafts", () => {
     await slot.behavior.emitRealtime("review.updated", { threadId: "thr_2" });
 
     expect(slot.inspection.rpcCalls.map((call) => call.method)).toEqual(["getReview"]);
+  });
+});
+
+describe("Review tab thread actions", () => {
+  const PLACED = "PRRT_kwDOHI7l-86jxula";
+  const OPEN_THREAD = "There's no wait for the new row to mount";
+  const REPLY = 'Fixed in "abc123"\nThanks';
+
+  async function openCard(slot: ReturnType<typeof renderTab>) {
+    await slot.findAllByTestId("line-annotation");
+    const annotation = slot
+      .getAllByTestId("line-annotation")
+      .find((candidate) => candidate.textContent?.includes(OPEN_THREAD))!;
+    return within(annotation.querySelector("article")!);
+  }
+
+  function typeReply(card: Awaited<ReturnType<typeof openCard>>, text = REPLY) {
+    fireEvent.change(card.getByRole("textbox", { name: "Reply" }), { target: { value: text } });
+  }
+
+  function writeCalls(slot: ReturnType<typeof renderTab>) {
+    return slot.inspection.rpcCalls.filter((call) => call.method !== "getReview");
+  }
+
+  function resolvedPlaced(): ReviewResult {
+    return {
+      ...threaded,
+      threads: {
+        ...threaded.threads,
+        placed: threaded.threads.placed.map((placed) =>
+          placed.thread.id === PLACED ? { ...placed, thread: { ...placed.thread, resolved: true } } : placed,
+        ),
+      },
+    };
+  }
+
+  it("does not post an empty reply", async () => {
+    const card = await openCard(renderTab(threaded));
+
+    expect(card.getByRole("button", { name: "Post" }).hasAttribute("disabled")).toBe(true);
+    typeReply(card, "   ");
+    expect(card.getByRole("button", { name: "Post + resolve" }).hasAttribute("disabled")).toBe(true);
+  });
+
+  it("posts the reply, clears the box, and loads the thread again", async () => {
+    const slot = renderTab(threaded);
+    const card = await openCard(slot);
+
+    typeReply(card);
+    fireEvent.click(card.getByRole("button", { name: "Post" }));
+
+    await waitFor(() => expect(slot.inspection.rpcCalls.map((call) => call.method)).toEqual(["getReview", "reply", "getReview"]));
+    expect(writeCalls(slot)[0]!.input).toEqual({ threadId: "thr_1", reviewThreadId: PLACED, body: REPLY, resolve: false });
+    expect((card.getByRole("textbox", { name: "Reply" }) as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it("asks to post and resolve on 'Post + resolve'", async () => {
+    const slot = renderTab(threaded);
+    const card = await openCard(slot);
+
+    typeReply(card);
+    fireEvent.click(card.getByRole("button", { name: "Post + resolve" }));
+
+    await waitFor(() => expect(writeCalls(slot)).toHaveLength(1));
+    expect(writeCalls(slot)[0]!.input).toMatchObject({ reviewThreadId: PLACED, resolve: true });
+  });
+
+  it("shows the error and keeps the text when the post fails", async () => {
+    const slot = renderTabWith({ reply: () => ({ kind: "post_failed", message: "gh not logged in" }) }, threaded);
+    const card = await openCard(slot);
+
+    typeReply(card);
+    fireEvent.click(card.getByRole("button", { name: "Post" }));
+
+    expect((await card.findByRole("alert")).textContent).toBe("gh not logged in");
+    expect((card.getByRole("textbox", { name: "Reply" }) as HTMLTextAreaElement).value).toBe(REPLY);
+    expect(slot.inspection.rpcCalls.map((call) => call.method)).toEqual(["getReview", "reply"]);
+  });
+
+  it("keeps the text when the reply call itself fails", async () => {
+    const slot = renderTabWith({ reply: () => Promise.reject(new Error("host unreachable")) }, threaded);
+    const card = await openCard(slot);
+
+    typeReply(card);
+    fireEvent.click(card.getByRole("button", { name: "Post" }));
+
+    expect((await card.findByRole("alert")).textContent).toBe("host unreachable");
+    expect((card.getByRole("textbox", { name: "Reply" }) as HTMLTextAreaElement).value).toBe(REPLY);
+  });
+
+  it("disables the box and the actions while a post runs", async () => {
+    const slot = renderTabWith({ reply: () => new Promise<ReplyResult>(() => {}) }, threaded);
+    const card = await openCard(slot);
+
+    typeReply(card);
+    fireEvent.click(card.getByRole("button", { name: "Post" }));
+
+    await waitFor(() => expect(card.getByRole("textbox", { name: "Reply" }).hasAttribute("disabled")).toBe(true));
+    for (const name of ["Post", "Post + resolve", "Resolve"]) {
+      expect(card.getByRole("button", { name }).hasAttribute("disabled")).toBe(true);
+    }
+  });
+
+  it("shows the resolve error after the reply was posted", async () => {
+    const slot = renderTabWith(
+      { reply: () => ({ kind: "posted", pendingReviewUrl: null, resolveError: "rate limited" }) },
+      threaded,
+    );
+    const card = await openCard(slot);
+
+    typeReply(card);
+    fireEvent.click(card.getByRole("button", { name: "Post + resolve" }));
+
+    expect((await card.findByRole("alert")).textContent).toBe("rate limited");
+    expect((card.getByRole("textbox", { name: "Reply" }) as HTMLTextAreaElement).value).toBe("");
+    await waitFor(() => expect(slot.inspection.rpcCalls.map((call) => call.method)).toEqual(["getReview", "reply", "getReview"]));
+  });
+
+  it("says when the reply went into the user's pending review", async () => {
+    const prUrl = "https://github.com/collibra/frontend/pull/25259";
+    const slot = renderTabWith({ reply: () => ({ kind: "posted", pendingReviewUrl: prUrl, resolveError: null }) }, threaded);
+    const card = await openCard(slot);
+
+    typeReply(card);
+    fireEvent.click(card.getByRole("button", { name: "Post" }));
+
+    const notice = await card.findByText("Reply added to your pending review.", { exact: false });
+    expect(within(notice).getByRole("link", { name: "Open the PR" }).getAttribute("href")).toBe(prUrl);
+  });
+
+  it("resolves the thread and loads again", async () => {
+    const slot = renderTab(threaded, resolvedPlaced());
+    const card = await openCard(slot);
+
+    fireEvent.click(card.getByRole("button", { name: "Resolve" }));
+
+    await waitFor(() => expect(slot.queryByText(OPEN_THREAD, { exact: false })).toBeNull());
+    expect(writeCalls(slot).map((call) => call.input)).toEqual([
+      { threadId: "thr_1", reviewThreadId: PLACED, resolved: true },
+    ]);
+  });
+
+  it("shows the error when the resolve fails", async () => {
+    const slot = renderTabWith({ setResolved: () => ({ kind: "error", message: "rate limited" }) }, threaded);
+    const card = await openCard(slot);
+
+    fireEvent.click(card.getByRole("button", { name: "Resolve" }));
+
+    expect((await card.findByRole("alert")).textContent).toBe("rate limited");
+    expect(slot.inspection.rpcCalls.map((call) => call.method)).toEqual(["getReview", "setResolved"]);
+  });
+
+  it("unresolves a resolved thread, which has no reply box", async () => {
+    const slot = renderTab(resolvedPlaced());
+
+    fireEvent.click(await slot.findByRole("checkbox", { name: "Show resolved" }));
+    fireEvent.click(slot.getByRole("button", { name: /a-bandziuk.*Resolved/ }));
+    const card = within(slot.getByRole("button", { name: /a-bandziuk.*Resolved/ }).closest("article")!);
+    expect(card.queryByRole("textbox", { name: "Reply" })).toBeNull();
+    fireEvent.click(card.getByRole("button", { name: "Unresolve" }));
+
+    await waitFor(() => expect(writeCalls(slot).map((call) => call.input)).toEqual([
+      { threadId: "thr_1", reviewThreadId: PLACED, resolved: false },
+    ]));
+  });
+
+  it("keeps the reply text when a thread above it in the file gets resolved", async () => {
+    const [first, second] = threaded.threads.placed;
+    const sameFile = { ...second!, thread: { ...second!.thread, path: first!.thread.path } };
+    const before: ReviewResult = { ...threaded, threads: { ...threaded.threads, placed: [first!, sameFile] } };
+    const after: ReviewResult = {
+      ...before,
+      threads: { ...before.threads, placed: [{ ...first!, thread: { ...first!.thread, resolved: true } }, sameFile] },
+    };
+    const slot = renderTab(before, after);
+    const card = await openCard(slot);
+    typeReply(card, "Half written");
+
+    await slot.behavior.emitRealtime("review.updated", { threadId: "thr_1" });
+
+    await waitFor(() => expect(slot.getAllByTestId("line-annotation")).toHaveLength(1));
+    const moved = within(slot.getByTestId("line-annotation"));
+    expect((moved.getByRole("textbox", { name: "Reply" }) as HTMLTextAreaElement).value).toBe("Half written");
   });
 });

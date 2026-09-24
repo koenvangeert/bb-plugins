@@ -3,6 +3,7 @@ import { Markdown } from "@get-bb/plugin-sdk/app";
 import { Icon } from "@/components/ui/icon";
 import type { Draft } from "../core/drafts";
 import type { ReviewComment, ReviewThread } from "../core/review-threads";
+import { useThreadActions } from "./thread-actions";
 
 export function ReviewThreadCard({ thread, draft }: { thread: ReviewThread; draft: Draft | undefined }) {
   const [expanded, setExpanded] = useState(false);
@@ -28,6 +29,7 @@ export function ReviewThreadCard({ thread, draft }: { thread: ReviewThread; draf
           ))}
           {thread.hasMoreComments && <MoreCommentsLink thread={thread} />}
           {draft !== undefined && <DraftView draft={draft} />}
+          <ThreadActionsView thread={thread} />
         </>
       )}
     </article>
@@ -70,5 +72,61 @@ function DraftView({ draft }: { draft: Draft }) {
       </h3>
       <p className="whitespace-pre-wrap">{draft.body}</p>
     </section>
+  );
+}
+
+const ACTION_BUTTON_CLASS =
+  "inline-flex shrink-0 items-center rounded-md border border-border px-2 py-0.5 text-xs hover:bg-muted disabled:opacity-60";
+
+function ThreadActionsView({ thread }: { thread: ReviewThread }) {
+  const actions = useThreadActions();
+  const { replyText, busy, error, pendingReviewUrl } = actions.stateOf(thread.id);
+  const canPost = !busy && replyText.trim() !== "";
+  return (
+    <div className="flex flex-col gap-1.5 border-t border-border px-3 py-2">
+      {!thread.resolved && (
+        <textarea
+          aria-label="Reply"
+          placeholder="Reply…"
+          rows={2}
+          className="w-full resize-y rounded-md border border-border bg-background px-2 py-1 text-sm"
+          value={replyText}
+          disabled={busy}
+          onChange={(event) => actions.setReplyText(thread.id, event.target.value)}
+        />
+      )}
+      {error !== null && (
+        <p role="alert" className="break-words text-xs text-destructive">
+          {error}
+        </p>
+      )}
+      {pendingReviewUrl !== null && (
+        <p role="status" className="text-xs text-muted-foreground">
+          Reply added to your pending review.{" "}
+          <a href={pendingReviewUrl} target="_blank" rel="noreferrer" className="hover:underline">
+            Open the PR
+          </a>
+        </p>
+      )}
+      <div className="flex gap-1.5">
+        {thread.resolved ? (
+          <button type="button" className={ACTION_BUTTON_CLASS} disabled={busy} onClick={() => void actions.setResolved(thread.id, false)}>
+            Unresolve
+          </button>
+        ) : (
+          <>
+            <button type="button" className={ACTION_BUTTON_CLASS} disabled={!canPost} onClick={() => void actions.post(thread.id, { resolve: false })}>
+              Post
+            </button>
+            <button type="button" className={ACTION_BUTTON_CLASS} disabled={!canPost} onClick={() => void actions.post(thread.id, { resolve: true })}>
+              Post + resolve
+            </button>
+            <button type="button" className={`${ACTION_BUTTON_CLASS} ml-auto`} disabled={busy} onClick={() => void actions.setResolved(thread.id, true)}>
+              Resolve
+            </button>
+          </>
+        )}
+      </div>
+    </div>
   );
 }

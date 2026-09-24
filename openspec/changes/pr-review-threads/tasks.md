@@ -14,8 +14,8 @@
 ## 3. GitHub access (host)
 
 - [ ] 3.1 Add host handlers `fetchPrFiles` and `fetchReviewThreads` (with paging, max 5 pages) to `hostContract` and `host.ts`; verify against a live PR from `bb plugin dev`
-- [ ] 3.2 Add host handlers `replyToThread` and `setThreadResolved` that pass the body and ids as GraphQL variables, never in the query text; verify a unit test on the built `gh` args with a body that holds quotes and newlines
-- [ ] 3.3 On a test PR, post a reply while you have a pending review on GitHub; record in design.md (Risks) if the reply goes to the pending review, and if so return a `pending_review` result that the tab shows as "Reply added to your pending review"
+- [x] 3.2 Add host handlers `replyToThread` and `setThreadResolved` that pass the body and ids as GraphQL variables, never in the query text; verify a unit test on the built `gh` args with a body that holds quotes and newlines
+- [x] 3.3 On a test PR, post a reply while you have a pending review on GitHub; record in design.md (Risks) if the reply goes to the pending review, and if so return a `pending_review` result that the tab shows as "Reply added to your pending review"
 - [x] 3.4 Add host handler `readTextFile(path, cwd)` with a 64 KB limit; verify unit tests for a relative path, a missing file, and a file over the limit
 
 ## 4. Server RPC and drafts
@@ -36,7 +36,7 @@
 
 - [ ] 6.1 Register the "Review" `threadPanelAction` (`layout: "flush"`) with header counts ("N open", "N outdated"), "Show resolved" toggle, refresh action, and the "No pull request for this thread" and error-with-retry states; verify with `renderSlot` tests
 - [ ] 6.2 Render the file list with one diff per file (D4, or the fallback from spike 1.1), "Diff not available" for files without a patch, and lazy rendering for files out of view; verify with a `renderSlot` test on the fixture
-- [ ] 6.3 Build the thread component: comments with author, time, and Markdown body; collapsed resolved threads; reply box with "Post" and "Post + resolve"; "Resolve" and "Unresolve"; errors keep the reply text; verify with `renderSlot` tests for each action and for a failed post
+- [x] 6.3 Build the thread component: comments with author, time, and Markdown body; collapsed resolved threads; reply box with "Post" and "Post + resolve"; "Resolve" and "Unresolve"; errors keep the reply text; verify with `renderSlot` tests for each action and for a failed post
 - [ ] 6.4 Build the "Outdated" section with path, original line, and the `diffHunk` snippet; verify with a `renderSlot` test on the fixture's outdated thread
 - [ ] 6.5 Add the checkboxes and "Send N to agent" (disabled at 0, clears after success, keeps selection on error); verify with `renderSlot` tests
 - [ ] 6.6 Show the draft as "Draft from agent" with an editable text, "Post", "Post + resolve", and "Discard"; save edits to the draft (debounced); refetch on `review.updated`; verify with `renderSlot` tests and in the running app that a draft saved from the CLI shows without a refresh
