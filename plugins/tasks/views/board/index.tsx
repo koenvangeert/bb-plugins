@@ -29,6 +29,7 @@ import {
 import { PriorityIcon, StatusIcon } from "./icons.js";
 import { isActiveThread } from "../detail/meta.js";
 import { STATUS_LABELS } from "../list/lib.js";
+import { DependencyChip, type DependencyFilter } from "../list/filter-bar.js";
 import { DependencyBadges, useBlockedWorkConfirm } from "../dependencies.js";
 import { Button } from "@/components/ui/button";
 import { DelayedLoading } from "@/components/ui/delayed-loading";
@@ -281,13 +282,23 @@ export function BoardView({ projectId }: BoardViewProps) {
     [projectId],
   );
 
+  const [dependency, setDependency] = useState<
+    DependencyFilter | undefined
+  >();
   const [columns, setColumns] = useState<ColumnMap | undefined>(undefined);
   useEffect(() => {
     setColumns(undefined);
   }, [projectId]);
   useEffect(() => {
-    if (board.data) setColumns(groupColumns(board.data.tasks));
-  }, [board.data]);
+    if (!board.data) return;
+    const shown =
+      dependency === undefined
+        ? board.data.tasks
+        : board.data.tasks.filter(
+            (task) => (task.blocked === true) === (dependency === "blocked"),
+          );
+    setColumns(groupColumns(shown));
+  }, [board.data, dependency]);
   const columnsRef = useRef(columns);
   columnsRef.current = columns;
 
@@ -554,40 +565,45 @@ export function BoardView({ projectId }: BoardViewProps) {
   };
 
   return (
-    <div
-      ref={boardRef}
-      className={cn(
-        "flex h-full items-start gap-3 overflow-x-auto p-4",
-        drag !== null && "cursor-grabbing",
-      )}
-    >
-      {visibleBoardStatuses(columns).map(renderColumn)}
-      {drag && ghostTask ? (
-        <div
-          className="pointer-events-none fixed z-50"
-          style={{
-            left: drag.x - drag.offsetX,
-            top: drag.y - drag.offsetY,
-            width: drag.width,
+    <div className="flex h-full flex-col">
+      <div className="flex items-center gap-1.5 px-4 pt-3">
+        <DependencyChip value={dependency} onChange={setDependency} />
+      </div>
+      <div
+        ref={boardRef}
+        className={cn(
+          "flex min-h-0 flex-1 items-start gap-3 overflow-x-auto p-4",
+          drag !== null && "cursor-grabbing",
+        )}
+      >
+        {visibleBoardStatuses(columns).map(renderColumn)}
+        {drag && ghostTask ? (
+          <div
+            className="pointer-events-none fixed z-50"
+            style={{
+              left: drag.x - drag.offsetX,
+              top: drag.y - drag.offsetY,
+              width: drag.width,
+            }}
+          >
+            <TaskCard
+              task={ghostTask}
+              labelsById={labelsById}
+              meta={metaByTaskId.get(ghostTask.id) ?? EMPTY_META}
+              ghost
+            />
+          </div>
+        ) : null}
+        <NewTaskDialog
+          open={quickAddStatus !== null}
+          onOpenChange={(open) => {
+            if (!open) setQuickAddStatus(null);
           }}
-        >
-          <TaskCard
-            task={ghostTask}
-            labelsById={labelsById}
-            meta={metaByTaskId.get(ghostTask.id) ?? EMPTY_META}
-            ghost
-          />
-        </div>
-      ) : null}
-      <NewTaskDialog
-        open={quickAddStatus !== null}
-        onOpenChange={(open) => {
-          if (!open) setQuickAddStatus(null);
-        }}
-        projectId={projectId}
-        defaultStatus={quickAddStatus ?? undefined}
-      />
-      {blockedWorkDialog}
+          projectId={projectId}
+          defaultStatus={quickAddStatus ?? undefined}
+        />
+        {blockedWorkDialog}
+      </div>
     </div>
   );
 }

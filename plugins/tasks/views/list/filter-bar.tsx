@@ -123,7 +123,7 @@ const DEPENDENCY_LABELS: Record<DependencyFilter | "all", string> = {
   blocked: "Blocked",
 };
 
-function DependencyChip({
+export function DependencyChip({
   value,
   onChange,
 }: {

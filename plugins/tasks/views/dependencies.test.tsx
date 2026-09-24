@@ -194,4 +194,21 @@ describe("dependency filter", () => {
     expect(slot.queryByText("ABC-8")).toBeNull();
     expect(slot.queryByText("ABC-5")).toBeTruthy();
   });
+
+  it("shows only ready or blocked cards on the board", async () => {
+    const slot = render(tasks, `${PROJECT_ID}?view=board`);
+    await itemFor(slot, "ABC-5");
+
+    await pick(slot, "Ready");
+
+    await waitFor(() => expect(slot.queryByText("ABC-5")).toBeNull());
+    expect(slot.queryByText("ABC-3")).toBeTruthy();
+    expect(slot.queryByText("ABC-8")).toBeTruthy();
+
+    await pick(slot, "Blocked");
+
+    await waitFor(() => expect(slot.queryByText("ABC-3")).toBeNull());
+    expect(slot.queryByText("ABC-8")).toBeNull();
+    expect(slot.queryByText("ABC-5")).toBeTruthy();
+  });
 });
