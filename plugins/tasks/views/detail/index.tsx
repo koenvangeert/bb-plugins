@@ -26,6 +26,8 @@ import {
   PropertiesRail,
   type TaskPropertyUpdate,
 } from "./rail.js";
+import { useBlockedWorkConfirm } from "../dependencies.js";
+import { DependencySections } from "./dependencies.js";
 import { ThreadsSection } from "./threads.js";
 import { DetailToasts, useDetailToasts } from "./toast.js";
 import { DelayedLoading } from "@/components/ui/delayed-loading";
@@ -192,7 +194,13 @@ function DetailSkeleton() {
   );
 }
 
-function TaskDetail({ task }: { task: Task }) {
+function TaskDetail({
+  task,
+  onTaskChanged,
+}: {
+  task: Task;
+  onTaskChanged: () => void;
+}) {
   const rpc = useTasksRpc();
   const delegationRpc = useRpc<DelegationRpcContract>();
   const navigation = useTasksNavigation();
@@ -284,9 +292,18 @@ function TaskDetail({ task }: { task: Task }) {
     return () => window.clearInterval(timer);
   }, [hasActivePullRequest, refreshPullRequests]);
 
+  const { confirmBlockedWork, blockedWorkDialog } = useBlockedWorkConfirm();
+
   const updateTask = async (
     input: TaskPropertyUpdate & { title?: string; description?: string },
   ) => {
+    if (
+      input.status === "in_progress" &&
+      task.status !== "in_progress" &&
+      !(await confirmBlockedWork(task))
+    ) {
+      return;
+    }
     try {
       const result = await rpc.call("updateTask", {
         taskId: task.id,
@@ -461,6 +478,12 @@ function TaskDetail({ task }: { task: Task }) {
             onCreate={createSubtask}
           />
 
+          <DependencySections
+            task={task}
+            onChanged={onTaskChanged}
+            onError={(message) => push(message)}
+          />
+
           {(threads.data ?? []).length > 0 ? (
             <div className="mt-6">
               <ThreadsSection
@@ -499,6 +522,7 @@ function TaskDetail({ task }: { task: Task }) {
         />
       </div>
       <DetailToasts toasts={toasts} onDismiss={dismiss} />
+      {blockedWorkDialog}
     </div>
   );
 }
@@ -527,5 +551,5 @@ export function DetailView({ taskKey }: DetailViewProps) {
       </div>
     );
   }
-  return <TaskDetail task={query.data} />;
+  return <TaskDetail task={query.data} onTaskChanged={query.refresh} />;
 }

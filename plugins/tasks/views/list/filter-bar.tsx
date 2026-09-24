@@ -108,10 +108,56 @@ function SortChip({
   );
 }
 
+export type DependencyFilter = "ready" | "blocked";
+
 export interface ListFilterState {
   statuses: TaskStatus[];
   priorities: TaskPriority[];
   labelNames: string[];
+  dependency?: DependencyFilter;
+}
+
+const DEPENDENCY_LABELS: Record<DependencyFilter | "all", string> = {
+  all: "All",
+  ready: "Ready",
+  blocked: "Blocked",
+};
+
+function DependencyChip({
+  value,
+  onChange,
+}: {
+  value: DependencyFilter | undefined;
+  onChange: (value: DependencyFilter | undefined) => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button type="button" className={chipTriggerClass(value !== undefined)}>
+          <Icon name="Lock" className="size-3" />
+          Dependencies
+          {value !== undefined ? (
+            <span className="font-medium">{DEPENDENCY_LABELS[value]}</span>
+          ) : null}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="min-w-44">
+        {(["all", "ready", "blocked"] as const).map((option) => (
+          <DropdownMenuCheckboxItem
+            key={option}
+            checked={(value ?? "all") === option}
+            onCheckedChange={(checked) => {
+              if (checked === true) {
+                onChange(option === "all" ? undefined : option);
+              }
+            }}
+          >
+            {DEPENDENCY_LABELS[option]}
+          </DropdownMenuCheckboxItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
 
 export const EMPTY_FILTERS: ListFilterState = {
@@ -124,7 +170,8 @@ export function hasActiveFilters(filters: ListFilterState): boolean {
   return (
     filters.statuses.length > 0 ||
     filters.priorities.length > 0 ||
-    filters.labelNames.length > 0
+    filters.labelNames.length > 0 ||
+    filters.dependency !== undefined
   );
 }
 
@@ -269,6 +316,13 @@ export function ListFilterBar({
               ))}
           </FilterChip>
         ) : null}
+        <DependencyChip
+          value={filters.dependency}
+          onChange={(dependency) => {
+            const { dependency: _previous, ...rest } = filters;
+            onChange(dependency === undefined ? rest : { ...rest, dependency });
+          }}
+        />
         {hasActiveFilters(filters) ? (
           <button
             type="button"

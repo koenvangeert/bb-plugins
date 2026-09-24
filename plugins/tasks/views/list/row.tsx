@@ -7,6 +7,7 @@ import type {
 } from "../../shared/contract.js";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
+import { DependencyBadges } from "../dependencies.js";
 import type { TaskRowMeta } from "./data.js";
 import { activeWorkLabel, formatDueDate, partitionLabels } from "./lib.js";
 import type { EditFn } from "./property-menus.js";
@@ -166,6 +167,7 @@ export function TaskRow({
           {task.title}
         </span>
         <span className="col-start-3 row-start-2 flex min-w-0 items-center gap-1.5 justify-self-end text-xs text-subtle-foreground @max-md:overflow-hidden @md:shrink-0">
+          <DependencyBadges task={task} className="py-px text-xs" />
           {meta ? <ActiveChip threads={meta.activeThreads} /> : null}
           <LabelChips task={task} labelsById={labelsById} />
           {task.dueDate !== null ? (

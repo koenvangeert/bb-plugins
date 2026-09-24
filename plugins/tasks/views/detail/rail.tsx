@@ -506,7 +506,7 @@ export function PropertiesRail({
 
       <div className="mt-2.5 py-0.5">
         <DispatchControl
-          taskId={task.id}
+          task={task}
           presets={presets}
           onError={onError}
           align="start"
@@ -590,7 +590,7 @@ export function InlineProperties({
         </button>
       </LabelsMenu>
       <DispatchControl
-        taskId={task.id}
+        task={task}
         presets={presets}
         onError={onError}
         className="ml-auto max-w-56"

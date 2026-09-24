@@ -25,10 +25,17 @@ For task dispatch and execution presets, read
    open/draft/merged/closed). Use
    `bb tasks show ABC-12 --json` when the result will drive commands or code.
 
+   Check the "Blocked by" section before you start. If a blocker is not `done`
+   or `canceled`, the task is blocked. Tell the user, and do not start the work
+   unless they ask you to. `update --status in_progress` and `dispatch` still
+   run on a blocked task, but print a warning on stderr (or a `warnings` array
+   with `--json`).
+
    For project-wide discovery, `bb tasks list` returns at most 100 rows by
    default. Pass `--limit 1-500`; in JSON, continue with `nextCursor` via the
    same filters/sort and `--cursor <value>`. A task-list mutation makes an old
-   cursor stale, so restart without it.
+   cursor stale, so restart without it. Add `--ready` for tasks with no open
+   blocker, or `--blocked` for tasks with one. You cannot use both.
 
 2. Fetch every relevant attachment before making assumptions about it:
 
@@ -73,6 +80,12 @@ For task dispatch and execution presets, read
    either a task key or ID for the parent. Promote a subtask to the top level
    with `bb tasks update ABC-12 --no-parent`; the two parent flags cannot be
    combined.
+
+   Record order between tasks with `bb tasks update ABC-12 --blocked-by ABC-3`
+   (ABC-3 must finish first). Remove a link with `--unblocked-by ABC-3`. Both
+   take a key or ID and are repeatable. A link that makes a cycle fails and
+   saves nothing. When the last open blocker goes to `done` or `canceled`, the
+   blocked task gets an "Unblocked" system comment.
 
    If the work cannot proceed, leave the status accurate and comment with the
    specific blocker, what you tried, and what would unblock it. Do not mark a
@@ -119,7 +132,7 @@ each renders its own card.
   status is `bb tasks list --status <status>` and
   `bb tasks update ABC-12 --status <status>`.
 - Repeatable options (`--label`, `--status`, `--priority`, `--add-label`,
-  `--remove-label`) accept a repeated flag or one comma-separated list.
+  `--remove-label`, `--blocked-by`, `--unblocked-by`) accept a repeated flag or one comma-separated list.
 - Unknown options and stray arguments are errors, never ignored, and every
   missing required value is reported in one error. A failing command run with
   `--json` prints `{"ok":false,"error":{"code","message","hint"?}}` on stdout.

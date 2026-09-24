@@ -184,10 +184,12 @@ export interface ListTasksFilters {
 
 export type TaskDependencyFilter = "ready" | "blocked";
 
+export type TaskDependencyRef = Pick<Task, "id" | "key" | "title" | "status">;
+
 export interface TaskDependencyState {
-  blockerIds: string[];
+  blockedBy: TaskDependencyRef[];
+  blocks: TaskDependencyRef[];
   openBlockerIds: string[];
-  blockedIds: string[];
   openBlockedIds: string[];
 }
 

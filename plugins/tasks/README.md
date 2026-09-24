@@ -16,6 +16,33 @@ bb plugin install tasks
 The plugin adds the Tasks sidebar panel, the `bb tasks` command, and an agent
 skill that teaches workers how to report progress back to tasks.
 
+### Replace the bundled plugin with this fork
+
+This fork has the plugin id `tasks-plus` and keeps the `bb tasks` command.
+Only one of the two plugins can be enabled at a time.
+
+1. Back up the bundled data:
+   `cp -R ~/.bb/plugins/tasks ~/.bb/plugins/tasks.backup-$(date +%F)`
+2. Install the fork and keep it disabled:
+   `bb plugin install --yes <repo>/plugins/tasks`, then
+   `bb plugin disable tasks-plus`.
+3. Disable the bundled plugin: `bb plugin disable tasks`. Do not use
+   `bb plugin remove tasks`.
+4. Copy the data: `plugins/tasks/scripts/import-bundled-data.sh --from
+   ~/.bb/plugins/tasks.backup-<date>`. The script stops if the fork already
+   has tasks. Set `BB_DATA_DIR` if bb does not use `~/.bb`.
+5. Enable the fork: `bb plugin enable tasks-plus`. Check `bb tasks list` and
+   the Tasks panel.
+
+Rollback:
+
+1. `bb plugin disable tasks-plus` (or `bb plugin remove tasks-plus`).
+2. `bb plugin enable tasks`.
+
+The import does not change `~/.bb/plugins/tasks/`. If that folder is damaged,
+restore it from the backup. Changes made in the fork do not go back to the
+bundled plugin.
+
 ## Quick start
 
 Install the plugin with `bb plugin install tasks`. Then use the `bb tasks` CLI
@@ -79,9 +106,9 @@ machine; pass `--machine <id-or-name>` to target another enrolled machine.
 | `bb tasks project create\|list\|show\|update`  | Manage tracker projects, folders, colors, prefixes, and bb-project links.                                                                  |
 | `bb tasks folder create\|list\|update\|delete` | Organize tracker projects into nested folders. Deleting a folder moves its projects and subfolders to the top level; no tasks are deleted. |
 | `bb tasks create`                              | Create a task with description, priority, labels, due date, optional parent, and file attachments (repeatable `--attach <path>`).          |
-| `bb tasks list`                                | Page/filter tasks by project, status, priority, label, active agents, or search text; supports `--sort`, `--limit`, and `--cursor`.        |
-| `bb tasks show <key-or-id>`                    | Show the complete task record, including comments, attachments, subtasks, and attached threads.                                            |
-| `bb tasks update <key-or-id>`                  | Update status, priority, title, description, due date, or labels.                                                                          |
+| `bb tasks list`                                | Page/filter tasks by project, status, priority, label, active agents, search text, or `--ready`/`--blocked`; supports `--sort`, `--limit`, and `--cursor`. |
+| `bb tasks show <key-or-id>`                    | Show the complete task record, including blockers, blocked tasks, comments, attachments, subtasks, and attached threads. |
+| `bb tasks update <key-or-id>`                  | Update status, priority, title, description, due date, labels, or blockers (`--blocked-by`, `--unblocked-by`). |
 | `bb tasks comment <key-or-id>`                 | Add a Markdown comment from inline text or a file; optionally notify the latest responding task agent.                                     |
 | `bb tasks attachment add\|get\|list\|remove`   | Add, fetch, list, or remove attachments. Referenced attachments require `remove --remove-references`.                                      |
 | `bb tasks preset list\|create\|update\|delete` | Manage reusable agent execution presets.                                                                                                   |
@@ -94,6 +121,27 @@ machine; pass `--machine <id-or-name>` to target another enrolled machine.
 
 Statuses are `backlog`, `todo`, `in_progress`, `in_review`, `done`, and
 `canceled`. Priorities are `urgent`, `high`, `medium`, `low`, and `none`.
+
+### Task dependencies
+
+A task can be blocked by other tasks, in any project. A task is blocked while
+one of its blockers is not `done` or `canceled`.
+
+```sh
+bb tasks update ABC-5 --blocked-by ABC-3      # ABC-3 must finish first
+bb tasks update ABC-5 --unblocked-by ABC-3    # remove the link
+bb tasks list --ready                          # tasks with no open blocker
+bb tasks list --blocked                        # tasks with an open blocker
+```
+
+- `--blocked-by` and `--unblocked-by` take a key or ID and are repeatable.
+- A link that makes a cycle fails, and the command saves nothing.
+- `--ready` and `--blocked` cannot be used together.
+- `update --status in_progress` and `dispatch` on a blocked task still run.
+  They print a warning on stderr, or a `warnings` array with `--json`.
+- When the last open blocker goes to `done` or `canceled`, the blocked task
+  gets an "Unblocked" system comment. No thread is notified.
+- The worker prompt of a dispatched task has a "Blocked by" section.
 
 Task lists default to 100 rows and accept `--limit 1-500`. JSON output is
 `{ tasks, nextCursor, limit }`; human output prints the continuation option

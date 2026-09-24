@@ -12,6 +12,7 @@ interface ListTaskFilters {
   statuses: readonly TaskStatus[];
   priorities: readonly TaskPriority[];
   labelIds: readonly string[] | null;
+  dependency?: "ready" | "blocked";
 }
 
 export function useListTasks(
@@ -32,6 +33,9 @@ export function useListTasks(
         ...(filters.labelIds !== null
           ? { labelIds: [...filters.labelIds] }
           : {}),
+        ...(filters.dependency !== undefined
+          ? { dependency: filters.dependency }
+          : {}),
         activeOnly,
         parentTaskId: null,
       }),
@@ -42,6 +46,7 @@ export function useListTasks(
       filters.statuses.join(),
       filters.priorities.join(),
       filters.labelIds === null ? "" : `active:${filters.labelIds.join()}`,
+      filters.dependency ?? "",
     ],
   );
 }

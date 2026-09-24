@@ -203,9 +203,11 @@ describe("task dependency state", () => {
     const state = store.dependencyState([blocked.id, blocker.id]);
 
     expect(state.get(blocked.id)).toEqual({
-      blockerIds: [blocker.id],
+      blockedBy: [
+        { id: blocker.id, key: "ABC-1", title: "Blocker", status: "todo" },
+      ],
+      blocks: [],
       openBlockerIds: [blocker.id],
-      blockedIds: [],
       openBlockedIds: [],
     });
     expect(state.get(blocker.id)?.openBlockedIds).toEqual([blocked.id]);
@@ -221,7 +223,10 @@ describe("task dependency state", () => {
 
     const state = store.dependencyState([blocked.id]).get(blocked.id);
 
-    expect(state?.blockerIds).toHaveLength(2);
+    expect(state?.blockedBy.map((ref) => ref.status)).toEqual([
+      "done",
+      "canceled",
+    ]);
     expect(state?.openBlockerIds).toEqual([]);
   });
 
@@ -260,9 +265,9 @@ describe("task dependency state", () => {
     store.deleteTask(blocker.id);
 
     expect(store.dependencyState([blocked.id]).get(blocked.id)).toEqual({
-      blockerIds: [],
+      blockedBy: [],
+      blocks: [],
       openBlockerIds: [],
-      blockedIds: [],
       openBlockedIds: [],
     });
   });
@@ -274,7 +279,7 @@ describe("task dependency state", () => {
 
     const state = store.dependencyState([blocker.id]).get(blocker.id);
 
-    expect(state?.blockedIds).toEqual([blocked.id]);
+    expect(state?.blocks.map((ref) => ref.id)).toEqual([blocked.id]);
     expect(state?.openBlockedIds).toEqual([]);
   });
 });

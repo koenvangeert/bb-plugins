@@ -101,6 +101,17 @@ interface TaskPageRow extends TaskRow {
   cursor_id: string;
 }
 
+interface DependencyRow {
+  blocker_id: string;
+  blocker_key: string;
+  blocker_title: string;
+  blocker_status: Task["status"];
+  blocked_id: string;
+  blocked_key: string;
+  blocked_title: string;
+  blocked_status: Task["status"];
+}
+
 interface TaskListRevisionRow {
   revision: number;
 }
@@ -1432,9 +1443,9 @@ export function createTasksStore(
     const states = new Map<string, TaskDependencyState>();
     for (const taskId of taskIds) {
       states.set(taskId, {
-        blockerIds: [],
+        blockedBy: [],
+        blocks: [],
         openBlockerIds: [],
-        blockedIds: [],
         openBlockedIds: [],
       });
     }
@@ -1443,24 +1454,22 @@ export function createTasksStore(
       if (ids.length === 0) continue;
       const placeholders = ids.map(() => "?").join(", ");
       const rows = db
-        .prepare<
-          string[],
-          {
-            blocker_task_id: string;
-            blocked_task_id: string;
-            blocker_status: Task["status"];
-            blocked_status: Task["status"];
-          }
-        >(
+        .prepare<string[], DependencyRow>(
           `
           SELECT
-            d.blocker_task_id,
-            d.blocked_task_id,
+            b.id AS blocker_id,
+            bp.prefix || '-' || b.number AS blocker_key,
+            b.title AS blocker_title,
             b.status AS blocker_status,
+            t.id AS blocked_id,
+            tp.prefix || '-' || t.number AS blocked_key,
+            t.title AS blocked_title,
             t.status AS blocked_status
           FROM task_dependencies d
           JOIN tasks b ON b.id = d.blocker_task_id
+          JOIN projects bp ON bp.id = b.project_id
           JOIN tasks t ON t.id = d.blocked_task_id
+          JOIN projects tp ON tp.id = t.project_id
           WHERE d.blocked_task_id IN (${placeholders})
             OR d.blocker_task_id IN (${placeholders})
           ORDER BY d.created_at, d.blocker_task_id, d.blocked_task_id
@@ -1468,21 +1477,31 @@ export function createTasksStore(
         )
         .all(...ids, ...ids);
       for (const row of rows) {
-        const blocked = states.get(row.blocked_task_id);
-        if (blocked && !blocked.blockerIds.includes(row.blocker_task_id)) {
-          blocked.blockerIds.push(row.blocker_task_id);
+        const blocked = states.get(row.blocked_id);
+        if (blocked && !blocked.blockedBy.some((r) => r.id === row.blocker_id)) {
+          blocked.blockedBy.push({
+            id: row.blocker_id,
+            key: row.blocker_key,
+            title: row.blocker_title,
+            status: row.blocker_status,
+          });
           if (isOpenStatus(row.blocker_status)) {
-            blocked.openBlockerIds.push(row.blocker_task_id);
+            blocked.openBlockerIds.push(row.blocker_id);
           }
         }
-        const blocker = states.get(row.blocker_task_id);
-        if (blocker && !blocker.blockedIds.includes(row.blocked_task_id)) {
-          blocker.blockedIds.push(row.blocked_task_id);
+        const blocker = states.get(row.blocker_id);
+        if (blocker && !blocker.blocks.some((r) => r.id === row.blocked_id)) {
+          blocker.blocks.push({
+            id: row.blocked_id,
+            key: row.blocked_key,
+            title: row.blocked_title,
+            status: row.blocked_status,
+          });
           if (
             isOpenStatus(row.blocker_status) &&
             isOpenStatus(row.blocked_status)
           ) {
-            blocker.openBlockedIds.push(row.blocked_task_id);
+            blocker.openBlockedIds.push(row.blocked_id);
           }
         }
       }

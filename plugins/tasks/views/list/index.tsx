@@ -38,6 +38,8 @@ import {
 import { editedTasks, matchesFilters } from "./optimistic.js";
 import { useListTaskEdits } from "./use-task-edits.js";
 import { TaskRow } from "./row.js";
+import type { EditFn } from "./property-menus.js";
+import { useBlockedWorkConfirm } from "../dependencies.js";
 
 interface ListViewProps {
   projectId: string | null;
@@ -116,9 +118,20 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
     statuses: filters.statuses,
     priorities: filters.priorities,
     labelIds,
+    dependency: filters.dependency,
   });
   const meta = useTaskListMeta(tasksQuery.data);
   const edits = useListTaskEdits(tasksQuery.data, (message) => push(message));
+  const { confirmBlockedWork, blockedWorkDialog } = useBlockedWorkConfirm();
+  const edit: EditFn = (task, patch) => {
+    if (patch.status !== "in_progress" || task.status === "in_progress") {
+      edits.edit(task, patch);
+      return;
+    }
+    void confirmBlockedWork(task).then((confirmed) => {
+      if (confirmed) edits.edit(task, patch);
+    });
+  };
 
   const labelsById = useMemo(
     () => new Map((labels.data ?? []).map((label) => [label.id, label])),
@@ -266,7 +279,7 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
             showProject={showProject}
             labelsById={labelsById}
             projectLabels={labelsByProject.get(task.projectId) ?? []}
-            onEdit={edits.edit}
+            onEdit={edit}
             onOpen={() => navigation.go({ kind: "task", taskKey: task.key })}
             pending={edits.pending.has(task.id)}
           />
@@ -297,6 +310,7 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
         projectId={projectId}
       />
       <DetailToasts toasts={toasts} onDismiss={dismiss} />
+      {blockedWorkDialog}
     </div>
   );
 }

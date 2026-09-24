@@ -3,6 +3,7 @@ import { UrlLink, useBbNavigate, useRpc } from "@get-bb/plugin-sdk/app";
 import type { DelegationRpcContract } from "../../delegate/contract.js";
 import type {
   Preset,
+  Task,
   TaskPullRequest,
   TaskThread,
 } from "../../shared/contract.js";
@@ -15,6 +16,7 @@ import {
 } from "./meta.js";
 import { PresetDialog, savePresetDraft } from "../manage/preset-dialog.js";
 import { ConfirmDialog } from "../../components/confirm-dialog.js";
+import { useBlockedWorkConfirm } from "../dependencies.js";
 import { useTasksRpc } from "../../shell/data.js";
 import { Button } from "@/components/ui/button";
 import {
@@ -141,7 +143,7 @@ function storeLastPresetId(presetId: string): void {
 }
 
 interface DispatchControlProps {
-  taskId: string;
+  task: Task;
   presets: Preset[] | undefined;
   onError: (message: string) => void;
   align?: "start" | "end";
@@ -149,7 +151,7 @@ interface DispatchControlProps {
 }
 
 export function DispatchControl({
-  taskId,
+  task,
   presets,
   onError,
   align = "end",
@@ -160,11 +162,13 @@ export function DispatchControl({
   const [dispatching, setDispatching] = useState(false);
   const [lastPresetId, setLastPresetId] = useState(loadLastPresetId);
   const [createDialogKey, setCreateDialogKey] = useState<number | null>(null);
+  const { confirmBlockedWork, blockedWorkDialog } = useBlockedWorkConfirm();
 
   const dispatch = async (presetId: string) => {
+    if (!(await confirmBlockedWork(task))) return;
     setDispatching(true);
     try {
-      await rpc.call("delegate", { taskId, presetId });
+      await rpc.call("delegate", { taskId: task.id, presetId });
     } catch (error) {
       onError(errorMessage(error));
     } finally {
@@ -263,6 +267,7 @@ export function DispatchControl({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+      {blockedWorkDialog}
     </>
   );
 }

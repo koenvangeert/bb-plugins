@@ -12,6 +12,7 @@ import { z } from "zod";
 import {
   createComment,
   publishProjectsChanged,
+  blockedWorkWarnings,
   registerHandlers,
   type TasksApiStore,
 } from "../api";
@@ -35,6 +36,7 @@ import {
   type Project,
   type Preset,
   type Task,
+  type TaskDependencyRef,
   type TaskMutationResult,
 } from "../shared/contract";
 import { attachmentDownloadUrl } from "../shared/attachments";
@@ -409,6 +411,43 @@ async function resolveTask(
   );
   if (!result.task) throw taskNotFound(address);
   return result.task;
+}
+
+async function resolveTaskIds(
+  domain: TasksDomain,
+  addresses: readonly string[],
+): Promise<string[]> {
+  const ids: string[] = [];
+  for (const address of addresses) {
+    ids.push((await resolveTask(domain, address)).id);
+  }
+  return ids;
+}
+
+function withWarnings(
+  stdout: string,
+  warnings: readonly string[],
+): string | PluginCliResult {
+  if (warnings.length === 0) return stdout;
+  return {
+    exitCode: 0,
+    stdout,
+    stderr: warnings.map((warning) => `warning: ${warning}`).join("\n"),
+  };
+}
+
+function dependencyTable(refs: readonly TaskDependencyRef[]): string {
+  return table(
+    ["KEY", "STATUS", "TITLE"],
+    refs.map((ref) => [ref.key, ref.status, ref.title]),
+    "(none)",
+  );
+}
+
+function openBlockerKeys(task: Task): string[] {
+  return (task.blockedBy ?? [])
+    .filter((ref) => ref.status !== "done" && ref.status !== "canceled")
+    .map((ref) => ref.key);
 }
 
 function taskNotFound(address: string): CliError {
@@ -1348,6 +1387,14 @@ export function registerTasksCli(
               type: "boolean",
               description: "Keep only tasks with a live agent thread",
             },
+            ready: {
+              type: "boolean",
+              description: "Keep only tasks with no open blocker",
+            },
+            blocked: {
+              type: "boolean",
+              description: "Keep only tasks with an open blocker",
+            },
             search: {
               type: "string",
               placeholder: "query",
@@ -1375,6 +1422,7 @@ export function registerTasksCli(
             },
             json: JSON_OPTION,
           },
+          constraints: [{ kind: "at-most-one", options: ["ready", "blocked"] }],
           run(input, ctx) {
             return guard(async () => {
               const project = await selectedProject(
@@ -1419,6 +1467,11 @@ export function registerTasksCli(
                     labelIds: labelIds.length > 0 ? labelIds : undefined,
                     activeOnly: input.options.active,
                     search: input.options.search,
+                    dependency: input.options.ready
+                      ? "ready"
+                      : input.options.blocked
+                        ? "blocked"
+                        : undefined,
                     sort: input.options.sort,
                     limit,
                     cursor: input.options.cursor,
@@ -1461,6 +1514,7 @@ export function registerTasksCli(
                   "TITLE",
                   "LABELS",
                   "AGENTS",
+                  "BLOCKED BY",
                 ],
                 tasks.map((task) => [
                   task.key,
@@ -1470,6 +1524,7 @@ export function registerTasksCli(
                   task.title,
                   task.labels.join(", ") || "-",
                   task.agentsWorking,
+                  openBlockerKeys(task).join(", ") || "-",
                 ]),
                 "No tasks.",
               );
@@ -1538,6 +1593,9 @@ export function registerTasksCli(
                   task,
                   project,
                   labels,
+                  blockedBy: task.blockedBy ?? [],
+                  blocks: task.blocks ?? [],
+                  blocked: task.blocked ?? false,
                   subtasks,
                   attachments,
                   taskThreads,
@@ -1552,6 +1610,12 @@ export function registerTasksCli(
                   ["ID", task.id],
                   ["Project", `${project.prefix} — ${project.name}`],
                   ["Status", task.status],
+                  [
+                    "Blocked",
+                    task.blocked
+                      ? `yes, by ${openBlockerKeys(task).join(", ")}`
+                      : "no",
+                  ],
                   ["Priority", task.priority],
                   ["Due", task.dueDate ?? "-"],
                   ["Parent", task.parentTaskId ?? "-"],
@@ -1563,6 +1627,8 @@ export function registerTasksCli(
                   ["Updated", task.updatedAt],
                 ]),
                 `Description\n${task.description || "(none)"}`,
+                `Blocked by\n${dependencyTable(task.blockedBy ?? [])}`,
+                `Blocks\n${dependencyTable(task.blocks ?? [])}`,
                 `Sub-tasks\n${table(
                   ["KEY", "STATUS", "PRIORITY", "TITLE"],
                   subtasks.map((subtask) => [
@@ -1688,6 +1754,22 @@ export function registerTasksCli(
               placeholder: "name",
               description: "Label name to remove; repeat or comma-separate",
             },
+            "blocked-by": {
+              type: "string",
+              repeatable: true,
+              split: ",",
+              placeholder: "key-or-id",
+              description:
+                "Task that must be done before this task; repeat or comma-separate",
+            },
+            "unblocked-by": {
+              type: "string",
+              repeatable: true,
+              split: ",",
+              placeholder: "key-or-id",
+              description:
+                "Remove this task from the blockers; repeat or comma-separate",
+            },
             machine: MACHINE_OPTION,
             json: JSON_OPTION,
           },
@@ -1746,6 +1828,14 @@ export function registerTasksCli(
               const labelsChanged =
                 input.options["add-label"].length > 0 ||
                 input.options["remove-label"].length > 0;
+              const addBlockerTaskIds = await resolveTaskIds(
+                domain,
+                input.options["blocked-by"],
+              );
+              const removeBlockerTaskIds = await resolveTaskIds(
+                domain,
+                input.options["unblocked-by"],
+              );
               if (
                 input.options.status === undefined &&
                 input.options.priority === undefined &&
@@ -1755,7 +1845,9 @@ export function registerTasksCli(
                 !noDue &&
                 parentAddress === undefined &&
                 !noParent &&
-                !labelsChanged
+                !labelsChanged &&
+                addBlockerTaskIds.length === 0 &&
+                removeBlockerTaskIds.length === 0
               ) {
                 throw new CliError("no task changes were provided", {
                   code: "no_changes",
@@ -1775,14 +1867,25 @@ export function registerTasksCli(
                         ? undefined
                         : (parent?.id ?? null),
                     labelIds: labelsChanged ? [...nextLabels] : undefined,
+                    addBlockerTaskIds,
+                    removeBlockerTaskIds,
                     authorName: taskAuthor(ctx),
                   }),
                 ),
               );
               const updated = unwrapTask(result);
-              return input.options.json
-                ? JSON.stringify({ task: updated })
-                : `Updated ${updated.key}  ${updated.title}`;
+              const warnings = result.ok ? (result.warnings ?? []) : [];
+              if (input.options.json) {
+                return JSON.stringify(
+                  warnings.length > 0
+                    ? { task: updated, warnings }
+                    : { task: updated },
+                );
+              }
+              return withWarnings(
+                `Updated ${updated.key}  ${updated.title}`,
+                warnings,
+              );
             });
           },
         }),
@@ -2551,9 +2654,15 @@ export function registerTasksCli(
                   }),
                 ),
               );
-              return input.options.json
-                ? JSON.stringify({ task, preset, ...result })
-                : result.threadId;
+              const warnings = blockedWorkWarnings(task);
+              if (input.options.json) {
+                return JSON.stringify(
+                  warnings.length > 0
+                    ? { task, preset, ...result, warnings }
+                    : { task, preset, ...result },
+                );
+              }
+              return withWarnings(result.threadId, warnings);
             });
           },
         }),

@@ -54,6 +54,7 @@ interface SeedPromptInput {
   task: Task;
   project: Project;
   subtasks: readonly Task[];
+  blockers: readonly Task[];
   attachments: readonly Pick<Attachment, "id" | "fileName">[];
   recentComments: readonly Comment[];
   presetInstructions: string;
@@ -64,10 +65,10 @@ function markdownSection(title: string, body: string): string {
   return `## ${title}\n\n${body}`;
 }
 
-function formatSubtasks(subtasks: readonly Task[]): string {
-  if (subtasks.length === 0) return "None.";
-  return subtasks
-    .map((subtask) => `- ${subtask.key} · ${subtask.title} (${subtask.status})`)
+function formatTaskRefs(tasks: readonly Task[]): string {
+  if (tasks.length === 0) return "None.";
+  return tasks
+    .map((task) => `- ${task.key} · ${task.title} (${task.status})`)
     .join("\n");
 }
 
@@ -105,7 +106,8 @@ export function buildSeedPrompt(input: SeedPromptInput): string {
       "Project context",
       `- Name: ${input.project.name}\n- Linked bb project: ${input.project.linkedBbProjectId ?? "Not linked"}`,
     ),
-    markdownSection("Sub-tasks", formatSubtasks(input.subtasks)),
+    markdownSection("Blocked by", formatTaskRefs(input.blockers)),
+    markdownSection("Sub-tasks", formatTaskRefs(input.subtasks)),
     markdownSection("Attachments", formatAttachments(input.attachments)),
     markdownSection("Recent comments", formatComments(input.recentComments)),
     markdownSection(
@@ -320,6 +322,7 @@ export function handlers(
         task,
         project,
         subtasks: store.tasks.listSubtasks(task.id),
+        blockers: store.tasks.listBlockers(task.id),
         attachments: collectAttachments(store.tasks, task.id, comments),
         recentComments,
         presetInstructions: preset.instructions,

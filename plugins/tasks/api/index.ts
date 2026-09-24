@@ -1,6 +1,7 @@
 import type { BbPluginApi, PluginRpcHandlers } from "@get-bb/plugin-sdk";
 import {
   createTasksStore,
+  TaskDependencyError,
   type Attachment as StoredAttachment,
   type Comment as StoredComment,
   type Task as StoredTask,
@@ -196,18 +197,63 @@ export function publishCommentsChanged(bb: BbPluginApi, taskId: string): void {
 }
 
 function apiTask(store: TasksApiStore, task: StoredTask): Task {
-  return {
-    ...task,
-    labelIds: store.taskLabelIds([task.id]).get(task.id) ?? [],
-  };
+  return apiTasks(store, [task])[0]!;
 }
 
 function apiTasks(store: TasksApiStore, tasks: StoredTask[]): Task[] {
-  const labelsByTask = store.taskLabelIds(tasks.map((task) => task.id));
-  return tasks.map((task) => ({
-    ...task,
-    labelIds: labelsByTask.get(task.id) ?? [],
-  }));
+  const taskIds = tasks.map((task) => task.id);
+  const labelsByTask = store.taskLabelIds(taskIds);
+  const dependencies = store.tasks.dependencyState(taskIds);
+  return tasks.map((task) => {
+    const state = dependencies.get(task.id);
+    const openBlockerCount = state?.openBlockerIds.length ?? 0;
+    return {
+      ...task,
+      labelIds: labelsByTask.get(task.id) ?? [],
+      blockedBy: state?.blockedBy ?? [],
+      blocks: state?.blocks ?? [],
+      openBlockerCount,
+      openBlockedCount: state?.openBlockedIds.length ?? 0,
+      blocked: openBlockerCount > 0,
+    };
+  });
+}
+
+function dependencyFailure(error: TaskDependencyError) {
+  return {
+    ok: false as const,
+    error: { code: error.code, message: error.message },
+  };
+}
+
+function changeTaskBlockers(
+  store: TasksApiStore,
+  taskId: string,
+  input: { addBlockerTaskIds?: string[]; removeBlockerTaskIds?: string[] },
+): string[] {
+  const changed = new Set<string>();
+  for (const blockerId of input.removeBlockerTaskIds ?? []) {
+    if (store.tasks.removeTaskDependency(blockerId, taskId)) {
+      changed.add(blockerId);
+    }
+  }
+  for (const blockerId of input.addBlockerTaskIds ?? []) {
+    if (store.tasks.addTaskDependency(blockerId, taskId)) {
+      changed.add(blockerId);
+    }
+  }
+  return [...changed];
+}
+
+export function blockedWorkWarnings(task: Task): string[] {
+  const openBlockers = (task.blockedBy ?? []).filter(
+    (ref) => ref.status !== "done" && ref.status !== "canceled",
+  );
+  if (openBlockers.length === 0) return [];
+  const list = openBlockers
+    .map((ref) => `${ref.key} (${ref.status})`)
+    .join(", ");
+  return [`${task.key} is blocked by ${list}`];
 }
 
 function validateTaskParent(
@@ -719,6 +765,7 @@ export function registerHandlers(
           if (input.labelIds) {
             replaceTaskLabels(store, current.id, input.labelIds);
           }
+          const linkedTaskIds = changeTaskBlockers(store, current.id, input);
 
           const bodies: string[] = [];
           if (updated.status !== current.status) {
@@ -743,18 +790,32 @@ export function registerHandlers(
           }
           writeSystemComments(store, current.id, input.authorName, bodies);
           return {
-            task: apiTask(store, updated),
+            task: apiTask(store, store.tasks.getTask(current.id)!),
+            linkedTaskIds,
             systemCommentsWritten: bodies.length,
           };
         });
 
         publishTasksChanged(bb, result.task.id, result.task.projectId);
+        for (const taskId of result.linkedTaskIds) {
+          const linked = store.tasks.getTask(taskId);
+          if (linked) publishTasksChanged(bb, linked.id, linked.projectId);
+        }
         if (result.systemCommentsWritten > 0) {
           publishCommentsChanged(bb, result.task.id);
         }
-        return { ok: true, task: result.task };
+        const warnings =
+          input.status === "in_progress"
+            ? blockedWorkWarnings(result.task)
+            : [];
+        return warnings.length > 0
+          ? { ok: true, task: result.task, warnings }
+          : { ok: true, task: result.task };
       } catch (error) {
         if (error instanceof TasksDomainFailure) return taskFailure(error);
+        if (error instanceof TaskDependencyError) {
+          return dependencyFailure(error);
+        }
         throw error;
       }
     },
@@ -777,6 +838,7 @@ export function registerHandlers(
         activeOnly: input.activeOnly,
         parentTaskId: input.parentTaskId,
         search: input.search,
+        dependency: input.dependency,
         sort: input.sort,
         limit: input.limit,
         cursor: input.cursor,
@@ -785,6 +847,43 @@ export function registerHandlers(
         tasks: apiTasks(store, page.tasks),
         nextCursor: page.nextCursor,
       };
+    },
+    addTaskDependency(input) {
+      try {
+        const added = store.tasks.addTaskDependency(
+          input.blockerTaskId,
+          input.blockedTaskId,
+        );
+        const [blocker, blocked] = apiTasks(
+          store,
+          [input.blockerTaskId, input.blockedTaskId].map(
+            (taskId) => store.tasks.getTask(taskId)!,
+          ),
+        );
+        if (added) {
+          publishTasksChanged(bb, blocker.id, blocker.projectId);
+          publishTasksChanged(bb, blocked.id, blocked.projectId);
+        }
+        return { ok: true, added, blocker, blocked };
+      } catch (error) {
+        if (error instanceof TaskDependencyError) {
+          return dependencyFailure(error);
+        }
+        throw error;
+      }
+    },
+    removeTaskDependency(input) {
+      const removed = store.tasks.removeTaskDependency(
+        input.blockerTaskId,
+        input.blockedTaskId,
+      );
+      if (removed) {
+        for (const taskId of [input.blockerTaskId, input.blockedTaskId]) {
+          const task = store.tasks.getTask(taskId);
+          if (task) publishTasksChanged(bb, task.id, task.projectId);
+        }
+      }
+      return { removed };
     },
     boardMove(input) {
       const current = store.tasks.getTask(input.taskId);

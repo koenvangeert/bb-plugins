@@ -5,7 +5,11 @@ import {
   type TaskStatus,
 } from "../../shared/contract.js";
 import { TASK_SORTS, type TaskSort } from "../../shared/pagination.js";
-import { EMPTY_FILTERS, type ListFilterState } from "./filter-bar.js";
+import {
+  EMPTY_FILTERS,
+  type DependencyFilter,
+  type ListFilterState,
+} from "./filter-bar.js";
 
 export const LIST_PREFERENCE_STORAGE_KEY = "bb-tasks:list-preferences";
 export const LIST_PREFERENCE_VERSION = 1 as const;
@@ -70,6 +74,10 @@ function uniqueLabelNames(values: unknown): string[] {
   return result;
 }
 
+function sanitizeDependency(value: unknown): { dependency?: DependencyFilter } {
+  return value === "ready" || value === "blocked" ? { dependency: value } : {};
+}
+
 function sanitizeSort(value: unknown): TaskSort {
   if (typeof value === "string" && SORT_SET.has(value)) {
     return value as TaskSort;
@@ -100,6 +108,7 @@ export function sanitizeListPreference(raw: unknown): ListPreference {
         PRIORITY_SET,
       ),
       labelNames: uniqueLabelNames(filtersRaw.labelNames),
+      ...sanitizeDependency(filtersRaw.dependency),
     },
     sort: sanitizeSort(record.sort),
   };

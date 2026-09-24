@@ -597,6 +597,10 @@ describe("delegation seed prompt", () => {
         task,
         project,
         subtasks: [subtask],
+        blockers: [
+          { ...subtask, key: "TASK-3", title: "Design schema", status: "todo" },
+          { ...subtask, key: "TASK-4", title: "Pick library", status: "done" },
+        ],
         attachments: [
           {
             id: "01J00000000000000000000006",
@@ -620,6 +624,11 @@ describe("delegation seed prompt", () => {
 
       - Name: Tasks plugin
       - Linked bb project: proj_tasks
+
+      ## Blocked by
+
+      - TASK-3 · Design schema (todo)
+      - TASK-4 · Pick library (done)
 
       ## Sub-tasks
 

@@ -114,6 +114,15 @@ const projectSchema = z
   })
   .strict();
 
+const taskDependencyRefSchema = z
+  .object({
+    id: idSchema,
+    key: z.string(),
+    title: z.string(),
+    status: taskStatusSchema,
+  })
+  .strict();
+
 const taskSchema = z
   .object({
     id: idSchema,
@@ -130,6 +139,11 @@ const taskSchema = z
     createdAt: z.string(),
     updatedAt: z.string(),
     labelIds: z.array(idSchema),
+    blockedBy: z.array(taskDependencyRefSchema).optional(),
+    blocks: z.array(taskDependencyRefSchema).optional(),
+    openBlockerCount: z.number().int().nonnegative().optional(),
+    openBlockedCount: z.number().int().nonnegative().optional(),
+    blocked: z.boolean().optional(),
   })
   .strict();
 
@@ -245,13 +259,21 @@ const tasksDomainErrorSchema = z
       "project_not_empty",
       "project_prefix_conflict",
       "attachment_referenced",
+      "dependency_self",
+      "dependency_cycle",
     ]),
     message: z.string(),
   })
   .strict();
 
 const taskMutationResultSchema = z.discriminatedUnion("ok", [
-  z.object({ ok: z.literal(true), task: taskSchema }).strict(),
+  z
+    .object({
+      ok: z.literal(true),
+      task: taskSchema,
+      warnings: z.array(z.string()).optional(),
+    })
+    .strict(),
   z.object({ ok: z.literal(false), error: tasksDomainErrorSchema }).strict(),
 ]);
 
@@ -301,6 +323,8 @@ const updateTaskInputSchema = z
     dueDate: dueDateSchema.nullable().optional(),
     parentTaskId: idSchema.nullable().optional(),
     labelIds: taskLabelsSchema.optional(),
+    addBlockerTaskIds: z.array(idSchema).max(100).optional(),
+    removeBlockerTaskIds: z.array(idSchema).max(100).optional(),
     authorName: nonBlankStringSchema.default("You"),
   })
   .strict()
@@ -312,7 +336,9 @@ const updateTaskInputSchema = z
       input.priority !== undefined ||
       input.dueDate !== undefined ||
       input.parentTaskId !== undefined ||
-      input.labelIds !== undefined,
+      input.labelIds !== undefined ||
+      (input.addBlockerTaskIds?.length ?? 0) > 0 ||
+      (input.removeBlockerTaskIds?.length ?? 0) > 0,
     { message: "at least one task field must be updated" },
   );
 
@@ -512,6 +538,7 @@ export const tasksRpcContract = defineRpcContract({
         activeOnly: z.boolean().default(false),
         parentTaskId: idSchema.nullable().optional(),
         search: z.string().optional(),
+        dependency: z.enum(["ready", "blocked"]).optional(),
         sort: taskSortSchema.default("manual"),
         limit: z
           .number()
@@ -528,6 +555,30 @@ export const tasksRpcContract = defineRpcContract({
         nextCursor: z.string().nullable(),
       })
       .strict(),
+  },
+  addTaskDependency: {
+    input: z
+      .object({ blockerTaskId: idSchema, blockedTaskId: idSchema })
+      .strict(),
+    output: z.discriminatedUnion("ok", [
+      z
+        .object({
+          ok: z.literal(true),
+          added: z.boolean(),
+          blocker: taskSchema,
+          blocked: taskSchema,
+        })
+        .strict(),
+      z
+        .object({ ok: z.literal(false), error: tasksDomainErrorSchema })
+        .strict(),
+    ]),
+  },
+  removeTaskDependency: {
+    input: z
+      .object({ blockerTaskId: idSchema, blockedTaskId: idSchema })
+      .strict(),
+    output: z.object({ removed: z.boolean() }).strict(),
   },
   boardMove: {
     input: z
@@ -733,6 +784,7 @@ export type TasksRpcContract = typeof tasksRpcContract;
 export type Folder = z.infer<typeof folderSchema>;
 export type Project = z.infer<typeof projectSchema>;
 export type Task = z.infer<typeof taskSchema>;
+export type TaskDependencyRef = z.infer<typeof taskDependencyRefSchema>;
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 export type TaskPriority = (typeof TASK_PRIORITIES)[number];
 export type Label = z.infer<typeof labelSchema>;

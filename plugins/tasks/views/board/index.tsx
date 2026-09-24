@@ -29,6 +29,7 @@ import {
 import { PriorityIcon, StatusIcon } from "./icons.js";
 import { isActiveThread } from "../detail/meta.js";
 import { STATUS_LABELS } from "../list/lib.js";
+import { DependencyBadges, useBlockedWorkConfirm } from "../dependencies.js";
 import { Button } from "@/components/ui/button";
 import { DelayedLoading } from "@/components/ui/delayed-loading";
 import { Icon } from "@/components/ui/icon";
@@ -215,6 +216,7 @@ function TaskCard({
       </div>
       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
         <PriorityIcon priority={task.priority} />
+        <DependencyBadges task={task} className="text-2xs" />
         {labels.map((label) => (
           <span
             key={label.id}
@@ -333,11 +335,24 @@ export function BoardView({ projectId }: BoardViewProps) {
     return null;
   };
 
-  const commitDrop = (
+  const { confirmBlockedWork, blockedWorkDialog } = useBlockedWorkConfirm();
+
+  const commitDrop = async (
     taskId: string,
     toStatus: TaskStatus,
     dropIndex: number,
   ) => {
+    const task = Object.values(columnsRef.current ?? {})
+      .flat()
+      .find((entry) => entry.id === taskId);
+    if (
+      task &&
+      toStatus === "in_progress" &&
+      task.status !== "in_progress" &&
+      !(await confirmBlockedWork(task))
+    ) {
+      return;
+    }
     const current = columnsRef.current;
     if (!current) return;
     const neighbors = dropNeighborsForIndex(
@@ -417,7 +432,7 @@ export function BoardView({ projectId }: BoardViewProps) {
           upEvent.clientY,
           task.id,
         );
-        if (target) commitDrop(task.id, target.status, target.index);
+        if (target) void commitDrop(task.id, target.status, target.index);
       }
       setDrag(null);
       suppressClickRef.current = true;
@@ -572,6 +587,7 @@ export function BoardView({ projectId }: BoardViewProps) {
         projectId={projectId}
         defaultStatus={quickAddStatus ?? undefined}
       />
+      {blockedWorkDialog}
     </div>
   );
 }
