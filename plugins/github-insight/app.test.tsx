@@ -1,0 +1,128 @@
+// @vitest-environment jsdom
+import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, within } from "@testing-library/react";
+import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
+import type { PluginThreadPanelProps } from "@get-bb/plugin-sdk/app";
+import type { InsightResult, rpcContract } from "./contract";
+import type { Check } from "./core/checks";
+
+const app = await loadPluginApp(() => import("./app"));
+const prTab = app.threadPanelActions.find((action) => action.id === "pr")!;
+
+afterEach(cleanup);
+
+function check(name: string, status: Check["status"]): Check {
+  return { name, status, url: `https://github.com/o/r/runs/${name}` };
+}
+
+const pr = {
+  number: 25337,
+  title: "feat(*): add ootbDomainTypesIds constants",
+  state: "open",
+  url: "https://github.com/collibra/frontend/pull/25337",
+} as const;
+
+const insight: InsightResult = {
+  kind: "ok",
+  insight: {
+    pr,
+    checks: [
+      check("lint", "passed"),
+      check("a11y-test", "failed"),
+      check("e2e", "cancelled"),
+      check("build", "running"),
+      check("container", "skipped"),
+      check("typecheck", "passed"),
+    ],
+  },
+};
+
+function renderTab(result: InsightResult) {
+  return renderSlot<PluginThreadPanelProps, typeof rpcContract>(
+    prTab,
+    { threadId: "thr_1", params: null },
+    { rpc: { getInsight: () => result } },
+  );
+}
+
+describe("PR tab", () => {
+  it("registers as the PR thread panel action", () => {
+    expect(prTab).toMatchObject({ title: "PR", layout: "padded" });
+  });
+
+  it("asks for the insight of its own thread", async () => {
+    const slot = renderTab({ kind: "no_pr" });
+
+    await slot.findByText("No pull request for this thread");
+    expect(slot.inspection.rpcCalls).toEqual([
+      expect.objectContaining({
+        method: "getInsight",
+        input: { threadId: "thr_1" },
+      }),
+    ]);
+  });
+
+  it("shows the PR number, title, state, and link", async () => {
+    const slot = renderTab(insight);
+
+    await slot.findByText("feat(*): add ootbDomainTypesIds constants");
+    expect(slot.getByText("#25337")).toBeTruthy();
+    expect(slot.getByText("Open")).toBeTruthy();
+    expect(
+      slot.getByRole("link", { name: /open on github/i }).getAttribute("href"),
+    ).toBe("https://github.com/collibra/frontend/pull/25337");
+  });
+
+  it("groups checks by status in order failed, cancelled, running, passed, skipped", async () => {
+    const slot = renderTab(insight);
+
+    await slot.findByText("#25337");
+    const headings = slot
+      .getAllByTestId("check-group-heading")
+      .map((heading) => heading.textContent);
+    expect(headings).toEqual([
+      "1 failed",
+      "1 cancelled",
+      "1 running",
+      "2 passed",
+      "1 skipped",
+    ]);
+  });
+
+  it("links each check to GitHub", async () => {
+    const slot = renderTab(insight);
+
+    const link = await slot.findByRole("link", { name: "a11y-test" });
+    expect(link.getAttribute("href")).toBe(
+      "https://github.com/o/r/runs/a11y-test",
+    );
+  });
+
+  it("collapses passed and skipped checks until the user expands them", async () => {
+    const slot = renderTab(insight);
+
+    const passed = (await slot.findByText("2 passed")).closest("details")!;
+    const skipped = slot.getByText("1 skipped").closest("details")!;
+    expect(passed.open).toBe(false);
+    expect(skipped.open).toBe(false);
+
+    fireEvent.click(within(passed).getByText("2 passed"));
+    expect(passed.open).toBe(true);
+    expect(within(passed).getByText("lint")).toBeTruthy();
+  });
+
+  it("shows the error text when the insight cannot be read", async () => {
+    const slot = renderTab({ kind: "error", message: "gh auth login" });
+
+    expect(await slot.findByRole("alert")).toHaveProperty(
+      "textContent",
+      "gh auth login",
+    );
+  });
+
+  it("says so when the PR has no checks", async () => {
+    const slot = renderTab({ kind: "ok", insight: { pr, checks: [] } });
+
+    await slot.findByText("No checks on the head commit");
+  });
+});
