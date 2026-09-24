@@ -1,6 +1,6 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { hostContract, rpcContract, type InsightResult } from "./contract";
-import { collectOverview } from "./core/overview";
+import { collectInsight } from "./core/overview";
 import { parsePullRequestUrl } from "./core/pr-ref";
 
 export type { rpcContract } from "./contract";
@@ -32,9 +32,12 @@ export default async function plugin(bb: BbPluginApi) {
 
     const { hostId } = environment;
     try {
-      const insight = await collectOverview((after) =>
-        host.call("fetchOverviewPage", { ...ref, after }, { hostId }),
-      );
+      const insight = await collectInsight({
+        fetchOverviewPage: (after) =>
+          host.call("fetchOverviewPage", { ...ref, after }, { hostId }),
+        fetchCheckRunDetails: (ids) =>
+          host.call("fetchCheckRunDetails", { ids }, { hostId }),
+      });
       return { kind: "ok", insight };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

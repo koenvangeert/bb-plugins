@@ -46,7 +46,7 @@ server (bb.server)                     host daemon (bb.host)
 ### D2: Two GraphQL calls per refresh
 
 1. **Overview query**: PR state, draft, `mergeStateStatus`, `reviewDecision`, `reviewRequests` (with `asCodeOwner`), `latestOpinionatedReviews`, `reviewThreads { isResolved }`, and `statusCheckRollup.contexts` with `CheckRun { id databaseId name status conclusion detailsUrl startedAt title summary }` and `StatusContext { context state description targetUrl createdAt }`. Page through contexts, up to 5 pages of 100.
-2. **Detail query**: `nodes(ids: [...])` for the newest failed or cancelled check runs only, with `annotations(first: 20)` (filtered to failure level on the server, first 5 shown) and `totalCount`.
+2. **Detail query**: `nodes(ids: [...])` for the newest failed or cancelled check runs only, with `annotations(first: 100)`. The server keeps only failure-level annotations, shows the first 5, and counts the failure-level annotations as the total. GitHub's `totalCount` is not used because it also counts warnings.
 
 - Why: asking annotations for all 88 runs makes the query large and slow. After deduplication only a few runs need them.
 - The detail query is skipped when no check failed or was cancelled.
@@ -54,9 +54,9 @@ server (bb.server)                     host daemon (bb.host)
 ### D3: Pure core module
 
 `core/` holds functions with no I/O:
-- `dedupeChecks`: one entry per name, newest by `startedAt`, then by `databaseId`. For status contexts, newest by `createdAt`.
+- `latestCheckCandidates`: one entry per name, newest by `startedAt`, then by `databaseId`. For status contexts, newest by `createdAt`.
 - `mapCheckStatus`: the status table in the `pr-insight-data` spec.
-- `checkReason`: title, then summary, then first failure annotation, then description.
+- `checkFailure`: reason (title, then summary, then first failure annotation, then description), up to 5 failure annotations, and their total.
 - `buildReviewers`: an open request wins (pending), then the latest opinionated review.
 - `buildBlockers`: fixed order, most important first: `conflicts`, `checks_failed`, `changes_requested`, `behind`, `review_required`, `unresolved_threads`, `checks_running`, `draft`, `blocked`. `blocked` only when no other code applies and GitHub says `BLOCKED`.
 - `buildSummary`: the version 1 metadata object. Asserts the 4 KiB limit.

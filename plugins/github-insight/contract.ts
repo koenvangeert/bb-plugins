@@ -12,9 +12,18 @@ const overviewPageRequestSchema = z
   .strict();
 export type OverviewPageRequest = z.infer<typeof overviewPageRequestSchema>;
 
+const checkRunDetailsRequestSchema = z
+  .object({ ids: z.array(z.string().min(1)).min(1) })
+  .strict();
+export type CheckRunDetailsRequest = z.infer<typeof checkRunDetailsRequestSchema>;
+
 export const hostContract = defineRpcContract({
   fetchOverviewPage: {
     input: overviewPageRequestSchema,
+    output: z.unknown(),
+  },
+  fetchCheckRunDetails: {
+    input: checkRunDetailsRequestSchema,
     output: z.unknown(),
   },
 });

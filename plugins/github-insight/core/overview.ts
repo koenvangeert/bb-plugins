@@ -1,10 +1,13 @@
 import { z } from "zod";
 import {
-  buildChecks,
   checkRunNodeSchema,
   checkSchema,
+  failingCheckRunIds,
+  latestCheckCandidates,
   statusContextNodeSchema,
+  toCheck,
 } from "./checks";
+import { parseFailureAnnotations, type Annotation } from "./failure";
 
 export const MAX_CONTEXT_PAGES = 5;
 
@@ -78,25 +81,50 @@ function nextContextsCursor(page: OverviewPage): string | null {
   return contexts.pageInfo.endCursor;
 }
 
-function toInsight(first: OverviewPage, pages: readonly OverviewPage[]): PrInsight {
-  const pr = first.data.repository.pullRequest;
-  const state = pr.isDraft && pr.state === "OPEN" ? "draft" : PR_STATE[pr.state];
-  return {
-    pr: { number: pr.number, title: pr.title, state, url: pr.url },
-    checks: buildChecks(pages.flatMap((page) => contextsOf(page)?.nodes ?? [])),
-  };
+export interface GitHubReader {
+  fetchOverviewPage: (after: string | null) => Promise<unknown>;
+  fetchCheckRunDetails: (ids: string[]) => Promise<unknown>;
 }
 
-export async function collectOverview(
-  fetchPage: (after: string | null) => Promise<unknown>,
-): Promise<PrInsight> {
-  const first = overviewPageSchema.parse(await fetchPage(null));
-  const pages = [first];
+async function readOverviewPages(
+  fetchOverviewPage: GitHubReader["fetchOverviewPage"],
+): Promise<[OverviewPage, ...OverviewPage[]]> {
+  const first = overviewPageSchema.parse(await fetchOverviewPage(null));
+  const pages: [OverviewPage, ...OverviewPage[]] = [first];
   let after = nextContextsCursor(first);
   while (after !== null && pages.length < MAX_CONTEXT_PAGES) {
-    const page = overviewPageSchema.parse(await fetchPage(after));
+    const page = overviewPageSchema.parse(await fetchOverviewPage(after));
     pages.push(page);
     after = nextContextsCursor(page);
   }
-  return toInsight(first, pages);
+  return pages;
+}
+
+async function readFailureAnnotations(
+  fetchCheckRunDetails: GitHubReader["fetchCheckRunDetails"],
+  ids: string[],
+): Promise<Map<string, Annotation[]>> {
+  if (ids.length === 0) return new Map();
+  return parseFailureAnnotations(await fetchCheckRunDetails(ids));
+}
+
+function prHeader(page: OverviewPage): PrInsight["pr"] {
+  const pr = page.data.repository.pullRequest;
+  const state = pr.isDraft && pr.state === "OPEN" ? "draft" : PR_STATE[pr.state];
+  return { number: pr.number, title: pr.title, state, url: pr.url };
+}
+
+export async function collectInsight(github: GitHubReader): Promise<PrInsight> {
+  const pages = await readOverviewPages(github.fetchOverviewPage);
+  const latest = latestCheckCandidates(
+    pages.flatMap((page) => contextsOf(page)?.nodes ?? []),
+  );
+  const annotations = await readFailureAnnotations(
+    github.fetchCheckRunDetails,
+    failingCheckRunIds(latest),
+  );
+  return {
+    pr: prHeader(pages[0]),
+    checks: latest.map((candidate) => toCheck(candidate, annotations)),
+  };
 }

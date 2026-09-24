@@ -1,7 +1,9 @@
 import { z } from "zod";
+import { checkFailure, checkFailureSchema, type Annotation } from "./failure";
 
 export const checkRunNodeSchema = z.object({
   __typename: z.literal("CheckRun"),
+  id: z.string(),
   databaseId: z.number(),
   name: z.string(),
   status: z.enum([
@@ -27,6 +29,8 @@ export const checkRunNodeSchema = z.object({
     .nullable(),
   detailsUrl: z.string().nullable(),
   startedAt: z.string().nullable(),
+  title: z.string().nullable(),
+  summary: z.string().nullable(),
 });
 export type CheckRunNode = z.infer<typeof checkRunNodeSchema>;
 
@@ -34,6 +38,7 @@ export const statusContextNodeSchema = z.object({
   __typename: z.literal("StatusContext"),
   context: z.string(),
   state: z.enum(["ERROR", "EXPECTED", "FAILURE", "PENDING", "SUCCESS"]),
+  description: z.string().nullable(),
   targetUrl: z.string().nullable(),
   createdAt: z.string(),
 });
@@ -54,6 +59,7 @@ export const checkSchema = z.object({
   name: z.string(),
   status: checkStatusSchema,
   url: z.string().nullable(),
+  failure: checkFailureSchema.nullable(),
 });
 export type Check = z.infer<typeof checkSchema>;
 
@@ -94,21 +100,30 @@ export function mapStatusContextState(
   return CONTEXT_STATE_STATUS[state];
 }
 
+const FAILING_STATUSES: ReadonlySet<CheckStatus> = new Set([
+  "failed",
+  "cancelled",
+]);
+
 const NOT_STARTED = Number.POSITIVE_INFINITY;
 
-interface CheckCandidate {
-  check: Check;
+export interface CheckCandidate {
+  name: string;
+  status: CheckStatus;
+  url: string | null;
+  runId: string | null;
+  reasonTexts: readonly (string | null)[];
   recency: readonly [time: number, tieBreak: number];
 }
 
 function toCandidate(node: CheckNode): CheckCandidate {
   if (node.__typename === "CheckRun") {
     return {
-      check: {
-        name: node.name,
-        status: mapCheckRunStatus(node.status, node.conclusion),
-        url: node.detailsUrl,
-      },
+      name: node.name,
+      status: mapCheckRunStatus(node.status, node.conclusion),
+      url: node.detailsUrl,
+      runId: node.id,
+      reasonTexts: [node.title, node.summary],
       recency: [
         node.startedAt === null ? NOT_STARTED : Date.parse(node.startedAt),
         node.databaseId,
@@ -116,11 +131,12 @@ function toCandidate(node: CheckNode): CheckCandidate {
     };
   }
   return {
-    check: {
-      name: node.context,
-      status: mapStatusContextState(node.state),
-      url: node.targetUrl,
-    },
+    name: node.context,
+    status: mapStatusContextState(node.state),
+    url: node.targetUrl,
+    runId: null,
+    // A status context has no annotations, so its description can come first.
+    reasonTexts: [node.description],
     recency: [Date.parse(node.createdAt), 0],
   };
 }
@@ -132,13 +148,42 @@ function isNewer(candidate: CheckCandidate, current: CheckCandidate): boolean {
   return candidateTieBreak > currentTieBreak;
 }
 
-export function buildChecks(nodes: readonly CheckNode[]): Check[] {
+export function latestCheckCandidates(
+  nodes: readonly CheckNode[],
+): CheckCandidate[] {
   const newestByName = new Map<string, CheckCandidate>();
   for (const candidate of nodes.map(toCandidate)) {
-    const current = newestByName.get(candidate.check.name);
+    const current = newestByName.get(candidate.name);
     if (current === undefined || isNewer(candidate, current)) {
-      newestByName.set(candidate.check.name, candidate);
+      newestByName.set(candidate.name, candidate);
     }
   }
-  return [...newestByName.values()].map((candidate) => candidate.check);
+  return [...newestByName.values()];
+}
+
+export function failingCheckRunIds(
+  candidates: readonly CheckCandidate[],
+): string[] {
+  return candidates.flatMap((candidate) =>
+    candidate.runId !== null && FAILING_STATUSES.has(candidate.status)
+      ? [candidate.runId]
+      : [],
+  );
+}
+
+export function toCheck(
+  candidate: CheckCandidate,
+  annotationsByRunId: ReadonlyMap<string, readonly Annotation[]>,
+): Check {
+  const { name, status, url, runId, reasonTexts } = candidate;
+  const annotations =
+    runId === null ? [] : (annotationsByRunId.get(runId) ?? []);
+  return {
+    name,
+    status,
+    url,
+    failure: FAILING_STATUSES.has(status)
+      ? checkFailure(reasonTexts, annotations)
+      : null,
+  };
 }

@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildChecks,
+  failingCheckRunIds,
+  latestCheckCandidates,
   mapCheckRunStatus,
   mapStatusContextState,
+  toCheck,
+  type CheckNode,
   type CheckRunNode,
   type StatusContextNode,
 } from "./checks";
@@ -10,12 +13,15 @@ import {
 function checkRun(overrides: Partial<CheckRunNode> = {}): CheckRunNode {
   return {
     __typename: "CheckRun",
+    id: "CR_1",
     databaseId: 1,
     name: "build",
     status: "COMPLETED",
     conclusion: "SUCCESS",
     detailsUrl: "https://github.com/o/r/actions/runs/1/job/1",
     startedAt: "2026-09-24T10:00:00Z",
+    title: null,
+    summary: null,
     ...overrides,
   };
 }
@@ -27,6 +33,7 @@ function statusContext(
     __typename: "StatusContext",
     context: "Storybook Publish",
     state: "SUCCESS",
+    description: null,
     targetUrl: "https://example.com/storybook",
     createdAt: "2026-09-24T10:00:00Z",
     ...overrides,
@@ -68,7 +75,13 @@ describe("mapStatusContextState", () => {
   });
 });
 
-describe("buildChecks", () => {
+function buildChecks(nodes: readonly CheckNode[]) {
+  return latestCheckCandidates(nodes).map((candidate) =>
+    toCheck(candidate, new Map()),
+  );
+}
+
+describe("latestCheckCandidates", () => {
   it("shows a check re-run after a cancel once, as passed", () => {
     const checks = buildChecks([
       checkRun({
@@ -86,7 +99,7 @@ describe("buildChecks", () => {
       }),
     ]);
 
-    expect(checks).toEqual([
+    expect(checks).toMatchObject([
       {
         name: "renovate-gate",
         status: "passed",
@@ -124,7 +137,7 @@ describe("buildChecks", () => {
       statusContext({ state: "PENDING", createdAt: "2026-09-24T10:00:00Z" }),
     ]);
 
-    expect(checks).toEqual([
+    expect(checks).toMatchObject([
       {
         name: "Storybook Publish",
         status: "passed",
@@ -137,5 +150,62 @@ describe("buildChecks", () => {
     const [check] = buildChecks([checkRun({ detailsUrl: null })]);
 
     expect(check?.url).toBeNull();
+  });
+});
+
+describe("toCheck", () => {
+  it("gives a failed status context its description as reason", () => {
+    const [check] = buildChecks([
+      statusContext({ state: "ERROR", description: "Storybook build failed" }),
+    ]);
+
+    expect(check?.failure).toEqual({
+      reason: "Storybook build failed",
+      annotations: [],
+      annotationCount: 0,
+    });
+  });
+
+  it("gives a failed check run the annotations of its run", () => {
+    const [candidate] = latestCheckCandidates([
+      checkRun({ id: "CR_9", conclusion: "FAILURE" }),
+    ]);
+    const annotation = { path: "src/a.ts", line: 3, message: "boom" };
+
+    const check = toCheck(candidate!, new Map([["CR_9", [annotation]]]));
+
+    expect(check.failure).toEqual({
+      reason: "boom",
+      annotations: [annotation],
+      annotationCount: 1,
+    });
+  });
+
+  it("keeps the link of a failed check without reason text", () => {
+    const [check] = buildChecks([checkRun({ conclusion: "FAILURE" })]);
+
+    expect(check?.failure?.reason).toBe("");
+    expect(check?.url).toBe("https://github.com/o/r/actions/runs/1/job/1");
+  });
+
+  it("gives no failure detail to a check that did not fail", () => {
+    const [check] = buildChecks([checkRun({ conclusion: "SUCCESS" })]);
+
+    expect(check?.failure).toBeNull();
+  });
+});
+
+describe("failingCheckRunIds", () => {
+  it("lists only the failed and cancelled check runs", () => {
+    const ids = failingCheckRunIds(
+      latestCheckCandidates([
+        checkRun({ id: "CR_failed", name: "a", conclusion: "FAILURE" }),
+        checkRun({ id: "CR_cancelled", name: "b", conclusion: "CANCELLED" }),
+        checkRun({ id: "CR_passed", name: "c", conclusion: "SUCCESS" }),
+        statusContext({ state: "FAILURE" }),
+      ]),
+    );
+
+    expect(ids).toEqual(["CR_failed", "CR_cancelled"]);
   });
 });

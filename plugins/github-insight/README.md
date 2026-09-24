@@ -29,4 +29,4 @@ bb plugin dev
 
 ## Test fixtures
 
-`test/fixtures/pr-25337-overview-page-*.json` are the two pages of the overview query for `collibra/frontend#25337`, recorded with `gh api graphql`. Re-record with the query in `github/overview-query.ts`.
+`test/fixtures/pr-25337-overview-page-*.json` are the two pages of the overview query for `collibra/frontend#25337`, recorded with `gh api graphql`. `test/fixtures/pr-25337-check-run-details.json` is the detail query for its newest failed and cancelled check runs. Re-record with the queries in `github/`.
