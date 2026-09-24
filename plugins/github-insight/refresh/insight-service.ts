@@ -7,7 +7,7 @@ import {
   type PrSummary,
   type WrittenSummary,
 } from "../core/summary";
-import { ghFailureText, type GhFailure } from "../github/gh-failure";
+import { GhFailureError, ghFailureText } from "../github/gh-failure";
 import type { PrResolution, PrTarget } from "../pr-lookup";
 
 export const POLL_INTERVAL_MS = 60_000;
@@ -17,12 +17,6 @@ export const RATE_LIMIT_FALLBACK_MS = 5 * 60_000;
 export interface ThreadRef {
   id: string;
   environmentId: string | null;
-}
-
-export class GhFailureError extends Error {
-  constructor(readonly failure: GhFailure) {
-    super(ghFailureText(failure));
-  }
 }
 
 export interface InsightServiceDeps {

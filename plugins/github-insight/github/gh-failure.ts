@@ -41,6 +41,12 @@ export function ghFailureText(failure: GhFailure): string {
   }
 }
 
+export class GhFailureError extends Error {
+  constructor(readonly failure: GhFailure) {
+    super(ghFailureText(failure));
+  }
+}
+
 export const RATE_LIMIT_ARGS = ["api", "rate_limit"];
 
 const rateLimitSchema = z.object({

@@ -1,7 +1,9 @@
 import { useCallback, useMemo, useState, type ReactNode } from "react";
-import { useRpc } from "@get-bb/plugin-sdk/app";
+import { useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
 import type { rpcContract } from "../contract";
+import type { Drafts } from "../core/drafts";
 import type { ReviewFile } from "../core/pr-files";
+import { isReviewUpdateFor, REVIEW_UPDATED_CHANNEL } from "../core/review-updated";
 import { openThreadCounts, type PlacedThread, type ThreadPlacement } from "../core/thread-placement";
 import { Notice, RefreshButton, RefreshError } from "./feedback";
 import { PrFileDiff } from "./file-diff";
@@ -14,7 +16,13 @@ function useReview(threadId: string) {
     (id: string) => rpc.call("getReview", { threadId: id }),
     [rpc],
   );
-  return useThreadResult(threadId, fetchReview);
+  const state = useThreadResult(threadId, fetchReview);
+
+  useRealtime(REVIEW_UPDATED_CHANNEL, (payload) => {
+    if (isReviewUpdateFor(payload, threadId)) state.reload();
+  });
+
+  return state;
 }
 
 export function ReviewTab({ threadId }: { threadId: string }) {
@@ -34,6 +42,7 @@ export function ReviewTab({ threadId }: { threadId: string }) {
     <ReviewContent
       files={result.files}
       threads={result.threads}
+      drafts={result.drafts}
       refreshing={refreshing}
       refresh={refresh}
     />
@@ -43,11 +52,12 @@ export function ReviewTab({ threadId }: { threadId: string }) {
 interface ReviewContentProps {
   files: readonly ReviewFile[];
   threads: ThreadPlacement;
+  drafts: Drafts;
   refreshing: boolean;
   refresh: () => void;
 }
 
-function ReviewContent({ files, threads, refreshing, refresh }: ReviewContentProps) {
+function ReviewContent({ files, threads, drafts, refreshing, refresh }: ReviewContentProps) {
   const [showResolved, setShowResolved] = useState(false);
   const visible = useMemo(() => visibleThreads(threads, showResolved), [threads, showResolved]);
   const placedByPath = useMemo(() => groupByPath(visible.placed), [visible.placed]);
@@ -69,9 +79,14 @@ function ReviewContent({ files, threads, refreshing, refresh }: ReviewContentPro
         <RefreshButton refreshing={refreshing} refresh={refresh} />
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <OutdatedThreads threads={visible.outdated} />
+        <OutdatedThreads threads={visible.outdated} drafts={drafts} />
         {files.map((file) => (
-          <PrFileDiff key={file.path} file={file} threads={placedByPath.get(file.path) ?? NO_THREADS} />
+          <PrFileDiff
+            key={file.path}
+            file={file}
+            threads={placedByPath.get(file.path) ?? NO_THREADS}
+            drafts={drafts}
+          />
         ))}
       </div>
     </div>

@@ -16,21 +16,21 @@
 - [ ] 3.1 Add host handlers `fetchPrFiles` and `fetchReviewThreads` (with paging, max 5 pages) to `hostContract` and `host.ts`; verify against a live PR from `bb plugin dev`
 - [ ] 3.2 Add host handlers `replyToThread` and `setThreadResolved` that pass the body and ids as GraphQL variables, never in the query text; verify a unit test on the built `gh` args with a body that holds quotes and newlines
 - [ ] 3.3 On a test PR, post a reply while you have a pending review on GitHub; record in design.md (Risks) if the reply goes to the pending review, and if so return a `pending_review` result that the tab shows as "Reply added to your pending review"
-- [ ] 3.4 Add host handler `readTextFile(path, cwd)` with a 64 KB limit; verify unit tests for a relative path, a missing file, and a file over the limit
+- [x] 3.4 Add host handler `readTextFile(path, cwd)` with a 64 KB limit; verify unit tests for a relative path, a missing file, and a file over the limit
 
 ## 4. Server RPC and drafts
 
-- [ ] 4.1 Implement draft storage in `bb.storage.kv` (key per PR and review thread, value body, updatedAt, source) with get, save, delete, and list-for-PR; verify unit tests with a fake kv
+- [x] 4.1 Implement draft storage in `bb.storage.kv` (key per PR and review thread, value body, updatedAt, source) with get, save, delete, and list-for-PR; verify unit tests with a fake kv
 - [ ] 4.2 Implement RPC `getReview({ threadId })`: resolve the PR, fetch files and threads in parallel, place threads, attach drafts, and delete drafts of resolved or missing threads; verify tests with fake host calls: "no PR", gh error, and the fixture result
 - [ ] 4.3 Implement RPCs `reply`, `setResolved`, `saveDraft`, and `discardDraft`; "Post + resolve" runs reply then resolve, and a successful post deletes the draft; verify unit tests, also for "resolve fails after reply"
 - [ ] 4.4 Publish `review.updated` with the thread id after each draft write or delete and after each GitHub write; verify a unit test with a fake realtime
 
 ## 5. Agent flow
 
-- [ ] 5.1 Register `defineCli` with `review list` (text and `--json`, unresolved only, draft flag, bodies capped at 4000 characters) and `review draft <thread-id>` (exactly one of `--body` or `--body-file`, id checked against the PR); verify unit tests for no `ctx.threadId`, no PR, unknown id, and a saved draft
+- [x] 5.1 Register `defineCli` with `review list` (text and `--json`, unresolved only, draft flag, bodies capped at 4000 characters) and `review draft <thread-id>` (exactly one of `--body` or `--body-file`, id checked against the PR); verify unit tests for no `ctx.threadId`, no PR, unknown id, and a saved draft
 - [ ] 5.2 Implement RPC `sendToAgent({ threadId, reviewThreadIds })` with fresh threads, `buildAgentPrompt`, and `bb.sdk.threads.send` in `auto` mode; verify in the running app that an idle thread starts a turn and a busy thread queues it, and record in design.md how the message shows in the chat
-- [ ] 5.3 Check that no CLI code path imports the GitHub write handlers; verify with a test that runs both CLI commands against a fake host and asserts that `replyToThread` and `setThreadResolved` are never called
-- [ ] 5.4 Add a short "Review threads" section to the plugin README: the tab, the CLI commands, and the rule that the agent must not post with `gh`; verify `bb github-insight review --help` lists both commands
+- [x] 5.3 Check that no CLI code path imports the GitHub write handlers; verify with a test that runs both CLI commands against a fake host and asserts that `replyToThread` and `setThreadResolved` are never called
+- [x] 5.4 Add a short "Review threads" section to the plugin README: the tab, the CLI commands, and the rule that the agent must not post with `gh`; verify `bb github-insight review --help` lists both commands
 
 ## 6. Review tab UI
 

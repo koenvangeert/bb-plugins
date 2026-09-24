@@ -1,9 +1,10 @@
 import { useId } from "react";
 import { experimental_Diff as Diff } from "@get-bb/plugin-sdk/app";
+import type { Drafts } from "../core/drafts";
 import type { ReviewThread } from "../core/review-threads";
 import { ReviewThreadCard } from "./review-thread";
 
-export function OutdatedThreads({ threads }: { threads: readonly ReviewThread[] }) {
+export function OutdatedThreads({ threads, drafts }: { threads: readonly ReviewThread[]; drafts: Drafts }) {
   const headingId = useId();
   if (threads.length === 0) return null;
   return (
@@ -12,13 +13,13 @@ export function OutdatedThreads({ threads }: { threads: readonly ReviewThread[] 
         Outdated
       </h2>
       {threads.map((thread) => (
-        <OutdatedThread key={thread.id} thread={thread} />
+        <OutdatedThread key={thread.id} thread={thread} drafts={drafts} />
       ))}
     </section>
   );
 }
 
-function OutdatedThread({ thread }: { thread: ReviewThread }) {
+function OutdatedThread({ thread, drafts }: { thread: ReviewThread; drafts: Drafts }) {
   const snippet = thread.comments[0]?.diffHunk;
   return (
     <div className="flex flex-col gap-1">
@@ -29,7 +30,7 @@ function OutdatedThread({ thread }: { thread: ReviewThread }) {
         </span>
       </div>
       {snippet !== undefined && <Diff patch={snippet} path={thread.path} />}
-      <ReviewThreadCard thread={thread} />
+      <ReviewThreadCard thread={thread} draft={drafts[thread.id]} />
     </div>
   );
 }

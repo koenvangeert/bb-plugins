@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Markdown } from "@get-bb/plugin-sdk/app";
 import { Icon } from "@/components/ui/icon";
+import type { Draft } from "../core/drafts";
 import type { ReviewComment, ReviewThread } from "../core/review-threads";
 
-export function ReviewThreadCard({ thread }: { thread: ReviewThread }) {
+export function ReviewThreadCard({ thread, draft }: { thread: ReviewThread; draft: Draft | undefined }) {
   const [expanded, setExpanded] = useState(false);
   const firstAuthor = thread.comments[0]?.author;
   return (
@@ -26,6 +27,7 @@ export function ReviewThreadCard({ thread }: { thread: ReviewThread }) {
             <CommentView key={comment.id} comment={comment} />
           ))}
           {thread.hasMoreComments && <MoreCommentsLink thread={thread} />}
+          {draft !== undefined && <DraftView draft={draft} />}
         </>
       )}
     </article>
@@ -56,5 +58,17 @@ function MoreCommentsLink({ thread }: { thread: ReviewThread }) {
     <a href={url} target="_blank" rel="noreferrer" className="border-t border-border px-3 py-1.5 text-xs text-muted-foreground hover:underline">
       More comments on GitHub
     </a>
+  );
+}
+
+function DraftView({ draft }: { draft: Draft }) {
+  const headingId = useId();
+  return (
+    <section aria-labelledby={headingId} className="flex flex-col gap-1 border-t border-border bg-muted/50 px-3 py-2">
+      <h3 id={headingId} className="text-xs font-medium text-muted-foreground">
+        Draft from agent
+      </h3>
+      <p className="whitespace-pre-wrap">{draft.body}</p>
+    </section>
   );
 }

@@ -5,13 +5,14 @@ import {
   type InsightUpdated,
 } from "./core/insight-updated";
 import { collectInsight } from "./core/overview";
-import { parsePrFiles } from "./core/pr-files";
-import { collectReviewThreads } from "./core/review-threads";
+import { REVIEW_UPDATED_CHANNEL } from "./core/review-updated";
 import { SUMMARY_METADATA_KEY } from "./core/summary";
-import { placeThreads } from "./core/thread-placement";
-import { ghFailureText } from "./github/gh-failure";
+import { GhFailureError } from "./github/gh-failure";
 import { createPrLookup } from "./pr-lookup";
-import { createInsightService, GhFailureError } from "./refresh/insight-service";
+import { createInsightService } from "./refresh/insight-service";
+import { createDraftStore } from "./review/draft-store";
+import { createReviewCli } from "./review/review-cli";
+import { createReviewService } from "./review/review-service";
 
 export type { rpcContract } from "./contract";
 
@@ -50,24 +51,18 @@ export default async function plugin(bb: BbPluginApi) {
     warn: (message) => bb.log.warn(message),
   });
 
+  const review = createReviewService({
+    resolvePr,
+    fetchPrFiles: async ({ ref, hostId }) => unwrap(await host.call("fetchPrFiles", ref, { hostId })),
+    fetchReviewThreadsPage: async ({ ref, hostId }, after) =>
+      unwrap(await host.call("fetchReviewThreads", { ...ref, after }, { hostId })),
+    drafts: createDraftStore(bb.storage.kv),
+    publish: (update) => bb.realtime.publish(REVIEW_UPDATED_CHANNEL, update),
+  });
+
   async function getReview(threadId: string): Promise<ReviewResult> {
-    const resolution = await resolvePr(threadId);
-    if (resolution.kind !== "pr") return resolution;
-    const { ref, hostId } = resolution.target;
-    try {
-      const [files, threads] = await Promise.all([
-        host.call("fetchPrFiles", ref, { hostId }).then((result) => parsePrFiles(unwrap(result))),
-        collectReviewThreads(async (after) =>
-          unwrap(await host.call("fetchReviewThreads", { ...ref, after }, { hostId })),
-        ),
-      ]);
-      return { kind: "ok", files, threads: placeThreads(files, threads) };
-    } catch (error) {
-      if (error instanceof GhFailureError) {
-        return { kind: "error", message: ghFailureText(error.failure) };
-      }
-      throw error;
-    }
+    const load = await review.load(threadId);
+    return load.kind === "ok" ? { kind: "ok", ...load.review } : load;
   }
 
   bb.rpc.register(rpcContract, {
@@ -75,6 +70,14 @@ export default async function plugin(bb: BbPluginApi) {
     refresh: ({ threadId }) => service.refresh(threadId),
     getReview: ({ threadId }) => getReview(threadId),
   });
+
+  bb.cli.register(
+    createReviewCli({
+      review,
+      readTextFile: (hostId, request) => host.call("readTextFile", request, { hostId }),
+      now: Date.now,
+    }),
+  );
 
   bb.background.service("pr-poller", { start: (signal) => service.run(signal) });
 }

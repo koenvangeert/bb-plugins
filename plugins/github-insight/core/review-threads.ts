@@ -91,9 +91,14 @@ export function parseReviewThreads(pages: unknown[]): ReviewThread[] {
   return pages.flatMap((page) => threadsOf(threadsPageSchema.parse(page)).nodes.map(toReviewThread));
 }
 
+export interface CollectedReviewThreads {
+  threads: ReviewThread[];
+  complete: boolean;
+}
+
 export async function collectReviewThreads(
   fetchPage: (after: string | null) => Promise<unknown>,
-): Promise<ReviewThread[]> {
+): Promise<CollectedReviewThreads> {
   const pages: ThreadsPage[] = [];
   let after: string | null = null;
   do {
@@ -102,5 +107,8 @@ export async function collectReviewThreads(
     const { pageInfo } = threadsOf(page);
     after = pageInfo.hasNextPage ? pageInfo.endCursor : null;
   } while (after !== null && pages.length < MAX_THREAD_PAGES);
-  return pages.flatMap((page) => threadsOf(page).nodes.map(toReviewThread));
+  return {
+    threads: pages.flatMap((page) => threadsOf(page).nodes.map(toReviewThread)),
+    complete: after === null,
+  };
 }
