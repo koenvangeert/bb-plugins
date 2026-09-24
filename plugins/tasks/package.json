@@ -1,18 +1,9 @@
 {
-  "name": "bb-plugin-tasks",
+  "name": "bb-plugin-tasks-plus",
   "version": "0.1.2",
   "description": "Plan and track work in BB, delegate tasks to agents, and keep task context connected to worker threads.",
   "private": true,
   "license": "MIT",
-  "homepage": "https://github.com/get-bb/bb#readme",
-  "bugs": {
-    "url": "https://github.com/get-bb/bb/issues"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/get-bb/bb.git",
-    "directory": "plugins/tasks"
-  },
   "type": "module",
   "files": [
     "dist",
@@ -22,8 +13,8 @@
     "README.md"
   ],
   "engines": {
-    "bb": ">=0.0",
-    "bbPluginSdk": ">=0.4.102"
+    "bb": ">=0.43",
+    "bbPluginSdk": ">=0.5.9"
   },
   "bb": {
     "name": "Tasks",
@@ -41,15 +32,24 @@
     "bb-plugin"
   ],
   "scripts": {
-    "build": "node --conditions=source --import tsx ../../scripts/build-official-plugins.mjs tasks",
+    "build": "bb plugin build",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint --ignore-pattern node_modules --ignore-pattern dist .",
-    "test": "vitest run --config vitest.config.ts",
-    "prepare:bundled": "bb-plugin-build prepare-bundled"
+    "test": "vitest run --config vitest.config.ts"
   },
   "devDependencies": {
-    "@bb/plugin-build": "workspace:*",
-    "@get-bb/plugin-sdk": "workspace:*",
+    "@get-bb/plugin-sdk": "0.5.9",
+    "@pierre/diffs": "^1.2.9",
+    "@radix-ui/react-alert-dialog": "^1.1.19",
+    "@radix-ui/react-context-menu": "^2.3.3",
+    "@radix-ui/react-dialog": "^1.1.19",
+    "@radix-ui/react-dropdown-menu": "^2.1.20",
+    "@radix-ui/react-hover-card": "^1.1.19",
+    "@radix-ui/react-menubar": "^1.1.20",
+    "@radix-ui/react-navigation-menu": "^1.2.18",
+    "@radix-ui/react-popover": "^1.1.19",
+    "@radix-ui/react-select": "^2.3.3",
+    "@radix-ui/react-tooltip": "^1.2.12",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
     "@types/better-sqlite3": "^7.6.12",
@@ -57,22 +57,25 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "better-sqlite3": "12.10.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "cron-parser": "^5.5.0",
     "hono": "4.11.9",
     "jsdom": "^29.0.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "sonner": "^1.7.4",
+    "tailwind-merge": "^3.4.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-7": "npm:typescript@^7.0.2",
+    "vaul": "^1.1.2",
     "vitest": "^4.1.1"
   },
   "dependencies": {
-    "@bb/shared-ui": "workspace:*",
     "@hugeicons/core-free-icons": "^4.3.4",
     "@hugeicons/react": "^1.1.6",
-    "@radix-ui/react-dialog": "^1.1.19",
-    "@radix-ui/react-dropdown-menu": "^2.1.20",
     "@radix-ui/react-slot": "^1.3.0",
+    "@radix-ui/react-tabs": "^1.1.13",
     "@tiptap/core": "^2.27.2",
     "@tiptap/extension-bubble-menu": "^2.27.2",
     "@tiptap/extension-image": "^2.27.2",
@@ -87,8 +90,8 @@
     "@tiptap/pm": "^2.27.2",
     "@tiptap/starter-kit": "^2.27.2",
     "@tiptap/suggestion": "^2.27.2",
+    "cmdk": "^1.1.1",
     "tiptap-markdown": "^0.8.10",
-    "vaul": "^1.1.2",
     "zod": "^4.3.6"
   }
 }
