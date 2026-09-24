@@ -26,6 +26,7 @@
     "*.tsx",
     "core",
     "github",
+    "refresh",
     "ui",
     "components",
     "lib",

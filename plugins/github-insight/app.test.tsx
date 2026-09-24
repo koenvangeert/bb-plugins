@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, within } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginThreadPanelProps } from "@get-bb/plugin-sdk/app";
 import type { InsightResult, rpcContract } from "./contract";
@@ -29,9 +29,13 @@ const pr = {
 
 const emptyInsight: PrInsight = { pr, blockers: [], reviewers: [], checks: [] };
 
-const insight: InsightResult = {
-  kind: "ok",
-  insight: {
+const REFRESHED_AT = Date.parse("2026-09-24T10:00:00Z");
+
+function ok(insight: PrInsight, error: string | null = null): InsightResult {
+  return { kind: "ok", insight, refreshedAt: REFRESHED_AT, error };
+}
+
+const insight = ok({
     pr,
     blockers: [
       { code: "checks_failed", text: "1 check failed" },
@@ -55,14 +59,17 @@ const insight: InsightResult = {
       check("container", "skipped"),
       check("typecheck", "passed"),
     ],
-  },
-};
+});
 
-function renderTab(result: InsightResult) {
+function renderTab(
+  result: InsightResult | (() => InsightResult),
+  refresh: () => InsightResult | Promise<InsightResult> = () => ({ kind: "no_pr" }),
+) {
+  const getInsight = typeof result === "function" ? result : () => result;
   return renderSlot<PluginThreadPanelProps, typeof rpcContract>(
     prTab,
     { threadId: "thr_1", params: null },
-    { rpc: { getInsight: () => result } },
+    { rpc: { getInsight, refresh } },
   );
 }
 
@@ -132,10 +139,7 @@ describe("PR tab", () => {
   });
 
   it("leaves out the blockers and reviewers of a PR without them", async () => {
-    const slot = renderTab({
-      kind: "ok",
-      insight: { ...emptyInsight, checks: [check("lint", "passed")] },
-    });
+    const slot = renderTab(ok({ ...emptyInsight, checks: [check("lint", "passed")] }));
 
     await slot.findByText("#25337");
     expect(slot.queryByRole("region", { name: "Merge blockers" })).toBeNull();
@@ -203,9 +207,8 @@ describe("PR tab", () => {
       line: index + 1,
       message: `error ${index + 1}`,
     }));
-    const slot = renderTab({
-      kind: "ok",
-      insight: {
+    const slot = renderTab(
+      ok({
         ...emptyInsight,
         checks: [
           check("lint", "failed", {
@@ -214,24 +217,103 @@ describe("PR tab", () => {
             annotationCount: 12,
           }),
         ],
-      },
-    });
+      }),
+    );
 
     await slot.findByText("7 more");
     expect(slot.getAllByTestId("check-annotation")).toHaveLength(5);
   });
 
   it("shows the error text when the insight cannot be read", async () => {
-    const slot = renderTab({ kind: "error", message: "gh auth login" });
+    const slot = renderTab({ kind: "error", message: "gh not logged in" });
 
-    expect(await slot.findByRole("alert")).toHaveProperty(
-      "textContent",
-      "gh auth login",
+    const alert = await slot.findByRole("alert");
+    expect(within(alert).getByText("gh not logged in")).toBeTruthy();
+  });
+
+  it("retries a failed read with a manual refresh", async () => {
+    const slot = renderTab({ kind: "error", message: "gh not installed" }, () => insight);
+
+    fireEvent.click(await slot.findByRole("button", { name: "Retry" }));
+
+    await slot.findByText("#25337");
+    expect(slot.inspection.rpcCalls.map((call) => call.method)).toEqual([
+      "getInsight",
+      "refresh",
+    ]);
+  });
+
+  it("keeps the last good data with its time when the last refresh failed", async () => {
+    const slot = renderTab(ok(emptyInsight, "rate limited"));
+
+    const alert = await slot.findByRole("alert");
+    expect(within(alert).getByText("rate limited")).toBeTruthy();
+    expect(within(alert).getByRole("button", { name: "Retry" })).toBeTruthy();
+    expect(
+      within(alert).getByText(/last updated/i).querySelector("time")?.dateTime,
+    ).toBe("2026-09-24T10:00:00.000Z");
+    expect(slot.getByText("#25337")).toBeTruthy();
+  });
+
+  it("does not show a refresh time while the data is current", async () => {
+    const slot = renderTab(insight);
+
+    await slot.findByText("#25337");
+    expect(slot.queryByText(/last updated/i)).toBeNull();
+  });
+
+  it("shows progress during a manual refresh and then the new data", async () => {
+    let finish: (result: InsightResult) => void = () => {};
+    const slot = renderTab(
+      insight,
+      () => new Promise((resolve) => (finish = resolve)),
+    );
+
+    fireEvent.click(await slot.findByRole("button", { name: "Refresh" }));
+
+    const busy = await slot.findByRole("button", { name: "Refreshing…" });
+    expect(busy).toHaveProperty("disabled", true);
+    await act(async () => finish(ok({ ...emptyInsight, pr: { ...pr, state: "merged" } })));
+    await slot.findByText("Merged");
+    expect(slot.getByRole("button", { name: "Refresh" })).toHaveProperty("disabled", false);
+  });
+
+  it("does not show another thread's refresh as in progress", async () => {
+    const slot = renderTab(insight, () => new Promise<InsightResult>(() => {}));
+    fireEvent.click(await slot.findByRole("button", { name: "Refresh" }));
+    await slot.findByRole("button", { name: "Refreshing…" });
+
+    const Tab = prTab.component;
+    slot.lifecycle.rerender(<Tab threadId="thr_2" params={null} />);
+
+    expect(await slot.findByRole("button", { name: "Refresh" })).toHaveProperty(
+      "disabled",
+      false,
     );
   });
 
+  it("shows new data when the server says this thread's insight changed", async () => {
+    let current = insight;
+    const slot = renderTab(() => current);
+    await slot.findByText("Open");
+
+    current = ok({ ...emptyInsight, pr: { ...pr, state: "merged" } });
+    await slot.behavior.emitRealtime("insight.updated", { threadIds: ["thr_1"] });
+
+    await slot.findByText("Merged");
+  });
+
+  it("ignores insight changes of other threads", async () => {
+    const slot = renderTab(insight);
+    await slot.findByText("Open");
+
+    await slot.behavior.emitRealtime("insight.updated", { threadIds: ["thr_2"] });
+
+    expect(slot.inspection.rpcCalls).toHaveLength(1);
+  });
+
   it("says so when the PR has no checks", async () => {
-    const slot = renderTab({ kind: "ok", insight: emptyInsight });
+    const slot = renderTab(ok(emptyInsight));
 
     await slot.findByText("No checks on the head commit");
   });
