@@ -94,7 +94,12 @@ Tests use a recorded, trimmed response of `collibra/frontend#25392` as fixture.
 - Fork `MateoCerquetella/bb-plugins`, change only `plugins/dockside`.
 - New pure function `parsePrSummary(value): PrSummaryV1 | null` that validates the shape.
 - The row component calls `useSdk().threads.getPluginMetadata({ threadId, pluginId: "github-insight" })`. When the result is null, the current `experimental_useSidebarThreadPullRequest` path runs unchanged.
-- Refresh: a spike (task 1) decides if a metadata write reaches dockside over realtime. If not, dockside refetches when the row's thread `updatedAt` changes, and at most every 60 seconds for mounted rows.
+- Refresh: a metadata write does not reach dockside live. The row refetches on mount, when the row's thread `updatedAt` changes, and every 60 seconds while mounted. The 60s timer is what picks up a new summary. The `updatedAt` refetch only catches thread activity. A new failed check reaches the row within 2 poll intervals (60s server poll, then 60s row poll).
+- Spike result (task 1.1, bb 0.43, plugin SDK 0.5.9): a throwaway plugin wrote `threads.updatePluginMetadata` from its server (CLI command) to an idle thread. A sidebar accessory in the same plugin read `useSdk().threads.getPluginMetadata` on mount and on `updatedAt` change, watched the thread object from `experimental_useSidebarThreads`, and logged each event to the server.
+  - Two writes, 10s apart: thread `updatedAt` stayed the same (read with `threads.get` before and after).
+  - The sidebar thread object did not change and the component did not re-render or refetch. It kept the old value.
+  - After a remount, `getPluginMetadata` returned the new value, so the write was stored.
+  - `getPluginMetadata` is a plain promise with no subscribe hook. Thread DTOs do not carry plugin metadata. `useRealtime` gets only the signals of its own plugin, so the `insight.updated` event from github-insight does not reach dockside.
 - Install the fork with `bb plugin install` from its git URL or a local path, instead of the upstream `dockside`.
 
 ## Risks / Trade-offs
@@ -110,7 +115,3 @@ Tests use a recorded, trimmed response of `collibra/frontend#25392` as fixture.
 
 - New plugin, no data to migrate. Install with `bb plugin install ./plugins/github-insight`.
 - Rollback: `bb plugin uninstall github-insight`. Dockside then falls back to core data because the summary is no longer updated. A stale summary stays in metadata; dockside shows it with its `updatedAt`, so the fork also ignores summaries older than 1 hour.
-
-## Open Questions
-
-- Does a thread plugin metadata write trigger a realtime update that dockside rows get? (Spike, task 1. Only changes how dockside refreshes, not the specs.)
