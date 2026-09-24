@@ -69,7 +69,7 @@ function renderTab(
   return renderSlot<PluginThreadPanelProps, typeof rpcContract>(
     prTab,
     { threadId: "thr_1", params: null },
-    { rpc: { getInsight, refresh } },
+    { rpc: { getInsight, refresh, getReview: () => ({ kind: "no_pr" }) } },
   );
 }
 
@@ -329,7 +329,7 @@ function renderBanner(result: InsightResult | (() => InsightResult)) {
     banner,
     {},
     {
-      rpc: { getInsight, refresh: getInsight },
+      rpc: { getInsight, refresh: getInsight, getReview: () => ({ kind: "no_pr" }) },
       composer: { scope: { kind: "thread", threadId: "thr_1" } },
       openThreadPanel: () => true,
     },

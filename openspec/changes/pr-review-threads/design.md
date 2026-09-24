@@ -64,6 +64,11 @@ server                                    host (gh on the environment's host)
   - `diffSide: RIGHT` → `additions`, `LEFT` → `deletions`, `lineNumber = line`.
   - A thread is **outdated** when `isOutdated` is true, or `line` is null, or the line is not in the file's hunks, or the file is not in the PR files. Outdated threads go to the "Outdated" section with `originalLine` and the first comment's `diffHunk`.
 - A spike (task 1.1) checks that the shimmed `@pierre/diffs/react` renders with bb's code theme in a plugin tab, and that annotations render React content.
+- **Spike result (task 1.1, 2026-09-24): D4 is chosen.** A spike tab showed a `PatchDiff` from the shimmed `@pierre/diffs/react` above bb's `experimental_Diff` with the same patch. In the running app the colors matched, and a React button in a line annotation was clickable. How it works:
+  - The tab runs inside the host's `WorkerPoolContext`, so highlighting uses the host's worker pool and its theme. The tab also passes `theme: name` and `themeType: mode` from `experimental_useCodeTheme()`.
+  - GitHub REST patches have no file headers, and Pierre needs them. The pure `gitPatch(file)` adds the `diff --git`, mode, rename or copy, and `---`/`+++` lines. `ui/file-diff.tsx` parses the result with `parsePatchFiles` and renders `FileDiff`. A patch that does not parse to exactly one file shows "Diff not available".
+  - All `@pierre/diffs` imports are in `ui/file-diff.tsx`. The `renderSlot` tests mock `@pierre/diffs/react` there, because the SDK test harness stubs `experimental_Diff` but not Pierre.
+  - The tab uses `layout: "flush"`, which has no host scrolling. The tab owns its scroll area. Each file mounts its diff when it comes near the view (`IntersectionObserver`).
 - Alternative (fallback if the spike fails): `experimental_Diff` per file, and below it a list of that file's threads. Each thread shows its `diffHunk` as a small `experimental_Diff`. It is less like GitHub, but it uses only supported SDK parts. The specs hold for both options, except that "below the diff line" becomes "below the file, with the line snippet".
 - Alternative: bb's `experimental_diffRenderer`. Rejected: no thread id and exclusive with other renderers.
 

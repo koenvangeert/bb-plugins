@@ -7,6 +7,7 @@ import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import pageOne from "./test/fixtures/pr-25337-overview-page-1.json";
 import pageTwo from "./test/fixtures/pr-25337-overview-page-2.json";
 import checkRunDetails from "./test/fixtures/pr-25337-check-run-details.json";
+import prFiles from "./test/fixtures/pr-1-files.json";
 import type { GhFailure } from "./github/gh-failure";
 import type { PrSummary } from "./core/summary";
 import plugin from "./server";
@@ -792,5 +793,67 @@ describe("prSummary metadata", () => {
     const result = await harness.behavior.callRpc("refresh", { threadId: "thr_1" });
 
     expect(result).toMatchObject({ kind: "ok", error: null });
+  });
+});
+
+describe("getReview", () => {
+  it("reports no PR and makes no GitHub call when bb links no PR", async () => {
+    const harness = await setup({ threads: [{ id: "thr_1", environmentId: "env_1" }] });
+
+    const result = await harness.behavior.callRpc("getReview", { threadId: "thr_1" });
+
+    expect(result).toEqual({ kind: "no_pr" });
+    expect(harness.experimental_hostRpcCalls).toHaveLength(0);
+  });
+
+  it("reads the PR files through the thread's host", async () => {
+    const harness = await setup({
+      threads: [{ id: "thr_1", environmentId: "env_1" }],
+      pullRequests: { env_1: linkedPr(25337) },
+      host: () => ok(prFiles),
+    });
+
+    const result = await harness.behavior.callRpc("getReview", { threadId: "thr_1" });
+
+    expect(harness.experimental_hostRpcCalls).toEqual([
+      expect.objectContaining({
+        method: "fetchPrFiles",
+        hostId: "host-1",
+        input: { owner: "collibra", repo: "frontend", number: 25337 },
+      }),
+    ]);
+    expect(result).toMatchObject({
+      kind: "ok",
+      files: [
+        { path: "plugins/github-insight/app.tsx", status: "added" },
+        { path: "plugins/github-insight/core/pr-ref.ts", status: "added" },
+        { path: "plugins/github-insight/package-lock.json", patch: null },
+      ],
+    });
+  });
+
+  it("names the gh failure", async () => {
+    const harness = await setup({
+      threads: [{ id: "thr_1", environmentId: "env_1" }],
+      pullRequests: { env_1: linkedPr(25337) },
+      host: () => failed({ kind: "gh_logged_out" }),
+    });
+
+    const result = await harness.behavior.callRpc("getReview", { threadId: "thr_1" });
+
+    expect(result).toEqual({ kind: "error", message: "gh not logged in" });
+  });
+
+  it("calls GitHub again on each load", async () => {
+    const harness = await setup({
+      threads: [{ id: "thr_1", environmentId: "env_1" }],
+      pullRequests: { env_1: linkedPr(25337) },
+      host: () => ok(prFiles),
+    });
+
+    await harness.behavior.callRpc("getReview", { threadId: "thr_1" });
+    await harness.behavior.callRpc("getReview", { threadId: "thr_1" });
+
+    expect(harness.experimental_hostRpcCalls).toHaveLength(2);
   });
 });

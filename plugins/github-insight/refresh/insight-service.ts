@@ -8,21 +8,11 @@ import {
   type WrittenSummary,
 } from "../core/summary";
 import { ghFailureText, type GhFailure } from "../github/gh-failure";
+import type { PrResolution, PrTarget } from "../pr-lookup";
 
 export const POLL_INTERVAL_MS = 60_000;
 export const MAX_PARALLEL_REFRESHES = 4;
 export const RATE_LIMIT_FALLBACK_MS = 5 * 60_000;
-
-export interface PrTarget {
-  ref: PullRequestRef;
-  hostId: string;
-  openOnBb: boolean;
-}
-
-export type PrResolution =
-  | { kind: "no_pr" }
-  | { kind: "error"; message: string }
-  | { kind: "pr"; target: PrTarget };
 
 export interface ThreadRef {
   id: string;
@@ -37,8 +27,8 @@ export class GhFailureError extends Error {
 
 export interface InsightServiceDeps {
   listThreads(): Promise<ThreadRef[]>;
-  threadEnvironment(threadId: string): Promise<string | null>;
-  resolvePr(environmentId: string): Promise<PrResolution>;
+  resolvePr(threadId: string): Promise<PrResolution>;
+  resolveEnvironmentPr(environmentId: string): Promise<PrResolution>;
   fetchInsight(target: PrTarget): Promise<PrInsight>;
   publish(threadIds: string[]): void;
   writeSummary(threadId: string, summary: PrSummary): Promise<void>;
@@ -226,7 +216,7 @@ export function createInsightService(deps: InsightServiceDeps) {
     const groups = new Map<string, PrGroup>();
     await Promise.all(
       [...threadsByEnvironment].map(async ([environmentId, threadIds]) => {
-        const resolution = await deps.resolvePr(environmentId);
+        const resolution = await deps.resolveEnvironmentPr(environmentId);
         if (resolution.kind === "no_pr") threadIdsWithoutPr.push(...threadIds);
         if (resolution.kind !== "pr") return;
         const key = prKey(resolution.target.ref);
@@ -250,12 +240,6 @@ export function createInsightService(deps: InsightServiceDeps) {
     ]);
   }
 
-  async function resolveThread(threadId: string): Promise<PrResolution> {
-    const environmentId = await deps.threadEnvironment(threadId);
-    if (environmentId === null) return { kind: "no_pr" };
-    return deps.resolvePr(environmentId);
-  }
-
   async function refreshThread(threadId: string, target: PrTarget): Promise<CacheEntry> {
     const threadIds = new Set(entries.get(prKey(target.ref))?.threadIds);
     threadIds.add(threadId);
@@ -264,7 +248,7 @@ export function createInsightService(deps: InsightServiceDeps) {
 
   return {
     async getInsight(threadId: string): Promise<InsightResult> {
-      const resolution = await resolveThread(threadId);
+      const resolution = await deps.resolvePr(threadId);
       if (resolution.kind !== "pr") return resolution;
       const entry = entries.get(prKey(resolution.target.ref));
       if (entry !== undefined) {
@@ -278,7 +262,7 @@ export function createInsightService(deps: InsightServiceDeps) {
     },
 
     async refresh(threadId: string): Promise<InsightResult> {
-      const resolution = await resolveThread(threadId);
+      const resolution = await deps.resolvePr(threadId);
       if (resolution.kind !== "pr") return resolution;
       return toResult(await refreshThread(threadId, resolution.target));
     },
