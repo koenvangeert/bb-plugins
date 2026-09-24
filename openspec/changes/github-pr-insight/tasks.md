@@ -39,7 +39,7 @@
 ## 7. Dockside fork
 
 - [ ] 7.1 Fork `MateoCerquetella/bb-plugins`, install the fork's `plugins/dockside` instead of the upstream one, and verify the sidebar looks the same as before
-- [ ] 7.2 Add `parsePrSummary` with validation of version 1, field types, and the 1-hour age limit; verify unit tests for valid, missing, wrong version, wrong types, and old summaries
+- [x] 7.2 Add `parsePrSummary` with validation of version 1, field types, and the 1-hour age limit; verify unit tests for valid, missing, wrong version, wrong types, and old summaries
 - [ ] 7.3 Show failed, running, and pending review counts with a tooltip on the row, a stale mark when `error` is set, and no counts for merged or closed PRs; fall back to the core hook when there is no valid summary; verify with component tests and in the running app with `github-insight` on and off
 - [ ] 7.4 Refresh rows as decided in spike 1.1; verify that a new failed check shows on the row within 2 poll intervals
 
