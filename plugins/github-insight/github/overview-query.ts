@@ -1,7 +1,7 @@
 import type { OverviewPageRequest } from "../contract";
 
 const OVERVIEW_QUERY = `
-query ($owner: String!, $repo: String!, $number: Int!, $after: String) {
+query ($owner: String!, $repo: String!, $number: Int!, $after: String, $firstPage: Boolean!) {
   repository(owner: $owner, name: $repo) {
     pullRequest(number: $number) {
       number
@@ -9,6 +9,29 @@ query ($owner: String!, $repo: String!, $number: Int!, $after: String) {
       state
       isDraft
       url
+      ... @include(if: $firstPage) {
+        mergeable
+        mergeStateStatus
+        reviewDecision
+        reviewRequests(first: 100) {
+          nodes {
+            asCodeOwner
+            requestedReviewer {
+              __typename
+              ... on User { login }
+              ... on Bot { login }
+              ... on Mannequin { login }
+              ... on Team { slug }
+            }
+          }
+        }
+        latestOpinionatedReviews(first: 100) {
+          nodes { state author { __typename login } }
+        }
+        reviewThreads(first: 100) {
+          nodes { isResolved }
+        }
+      }
       commits(last: 1) {
         nodes {
           commit {
@@ -43,6 +66,8 @@ export function overviewPageArgs(request: OverviewPageRequest): string[] {
     `repo=${request.repo}`,
     "-F",
     `number=${request.number}`,
+    "-F",
+    `firstPage=${request.after === null}`,
   ];
   if (request.after !== null) args.push("-f", `after=${request.after}`);
   return args;

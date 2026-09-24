@@ -7,6 +7,97 @@
         "state": "OPEN",
         "isDraft": false,
         "url": "https://github.com/collibra/frontend/pull/25337",
+        "mergeable": "MERGEABLE",
+        "mergeStateStatus": "BEHIND",
+        "reviewDecision": "REVIEW_REQUIRED",
+        "reviewRequests": {
+          "nodes": [
+            {
+              "asCodeOwner": true,
+              "requestedReviewer": {
+                "__typename": "Team",
+                "slug": "workflows-frontend"
+              }
+            },
+            {
+              "asCodeOwner": true,
+              "requestedReviewer": {
+                "__typename": "Team",
+                "slug": "semantic-model-ontology-frontend"
+              }
+            },
+            {
+              "asCodeOwner": true,
+              "requestedReviewer": {
+                "__typename": "Team",
+                "slug": "knowledge-graph-model-frontend"
+              }
+            },
+            {
+              "asCodeOwner": true,
+              "requestedReviewer": {
+                "__typename": "Team",
+                "slug": "control-tower-frontend"
+              }
+            },
+            {
+              "asCodeOwner": true,
+              "requestedReviewer": {
+                "__typename": "Team",
+                "slug": "catalog-integrations"
+              }
+            },
+            {
+              "asCodeOwner": true,
+              "requestedReviewer": {
+                "__typename": "Team",
+                "slug": "central-frontend-team"
+              }
+            }
+          ]
+        },
+        "latestOpinionatedReviews": {
+          "nodes": [
+            {
+              "state": "APPROVED",
+              "author": {
+                "__typename": "User",
+                "login": "salman-collibra"
+              }
+            },
+            {
+              "state": "APPROVED",
+              "author": {
+                "__typename": "User",
+                "login": "alockhartcollibra"
+              }
+            },
+            {
+              "state": "APPROVED",
+              "author": {
+                "__typename": "User",
+                "login": "koenvangeert"
+              }
+            },
+            {
+              "state": "APPROVED",
+              "author": {
+                "__typename": "User",
+                "login": "msdanielsen"
+              }
+            },
+            {
+              "state": "APPROVED",
+              "author": {
+                "__typename": "User",
+                "login": "doychin-lazarov"
+              }
+            }
+          ]
+        },
+        "reviewThreads": {
+          "nodes": []
+        },
         "commits": {
           "nodes": [
             {

@@ -1,9 +1,11 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { UrlLink, useRpc } from "@get-bb/plugin-sdk/app";
 import type { InsightResult, rpcContract } from "../contract";
+import type { Blocker } from "../core/blockers";
 import type { Check, CheckStatus } from "../core/checks";
 import type { CheckFailure } from "../core/failure";
 import type { PrInsight } from "../core/overview";
+import { reviewerKey, type Reviewer } from "../core/reviewers";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 
@@ -33,6 +35,14 @@ const PR_STATE_LABEL: Record<PrInsight["pr"]["state"], string> = {
   draft: "Draft",
   closed: "Closed",
   merged: "Merged",
+};
+
+const REVIEWER_STATE_LABEL: Record<Reviewer["state"], string> = {
+  pending: "Pending",
+  approved: "Approved",
+  changes_requested: "Changes requested",
+  commented: "Commented",
+  dismissed: "Dismissed",
 };
 
 function useInsight(threadId: string): InsightResult | null {
@@ -77,6 +87,8 @@ export function PrTab({ threadId }: { threadId: string }) {
   return (
     <div className="flex flex-col gap-4">
       <PrHeader pr={result.insight.pr} />
+      <BlockerList blockers={result.insight.blockers} />
+      <ReviewerList reviewers={result.insight.reviewers} />
       <CheckList checks={result.insight.checks} />
     </div>
   );
@@ -110,10 +122,57 @@ function PrHeader({ pr }: { pr: PrInsight["pr"] }) {
   );
 }
 
+const SECTION_HEADING_CLASS = "text-xs font-medium text-muted-foreground";
+
+const LABEL_CLASS =
+  "shrink-0 rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground";
+
+function BlockerList({ blockers }: { blockers: readonly Blocker[] }) {
+  if (blockers.length === 0) return null;
+  return (
+    <section aria-label="Merge blockers" className="flex flex-col gap-1">
+      <h3 className={SECTION_HEADING_CLASS}>Merge blockers</h3>
+      <ul className="flex flex-col">
+        {blockers.map((blocker) => (
+          <li key={blocker.code} className="flex items-center gap-2 py-0.5 text-sm">
+            <Icon name="AlertCircle" className="size-4 shrink-0 text-amber-500" />
+            {blocker.text}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function ReviewerList({ reviewers }: { reviewers: readonly Reviewer[] }) {
+  if (reviewers.length === 0) return null;
+  return (
+    <section aria-label="Reviewers" className="flex flex-col gap-1">
+      <h3 className={SECTION_HEADING_CLASS}>Reviewers</h3>
+      <ul className="flex flex-col">
+        {reviewers.map((reviewer) => (
+          <li
+            key={reviewerKey(reviewer)}
+            className="flex min-w-0 items-center gap-2 py-0.5 text-sm"
+          >
+            <span className="truncate">
+              {reviewer.kind === "team" ? `${reviewer.name} (team)` : reviewer.name}
+            </span>
+            <span className={cn(LABEL_CLASS, "ml-auto")}>
+              {REVIEWER_STATE_LABEL[reviewer.state]}
+            </span>
+            {reviewer.codeOwner && <span className={LABEL_CLASS}>code owner</span>}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function CheckList({ checks }: { checks: readonly Check[] }) {
   if (checks.length === 0) return <Notice>No checks on the head commit</Notice>;
   return (
-    <section className="flex flex-col gap-3">
+    <section aria-label="Checks" className="flex flex-col gap-3">
       {STATUS_ORDER.map((status) => {
         const group = checks.filter((check) => check.status === status);
         if (group.length === 0) return null;
@@ -131,8 +190,6 @@ interface CheckGroupProps {
   checks: readonly Check[];
 }
 
-const GROUP_HEADING_CLASS = "text-xs font-medium text-muted-foreground";
-
 function GroupHeading({ status, checks }: CheckGroupProps) {
   return (
     <span data-testid="check-group-heading">
@@ -144,7 +201,7 @@ function GroupHeading({ status, checks }: CheckGroupProps) {
 function OpenCheckGroup(props: CheckGroupProps) {
   return (
     <div>
-      <h3 className={GROUP_HEADING_CLASS}>
+      <h3 className={SECTION_HEADING_CLASS}>
         <GroupHeading {...props} />
       </h3>
       <CheckRows checks={props.checks} />
@@ -155,7 +212,7 @@ function OpenCheckGroup(props: CheckGroupProps) {
 function CollapsedCheckGroup(props: CheckGroupProps) {
   return (
     <details>
-      <summary className={cn(GROUP_HEADING_CLASS, "cursor-pointer select-none")}>
+      <summary className={cn(SECTION_HEADING_CLASS, "cursor-pointer select-none")}>
         <GroupHeading {...props} />
       </summary>
       <CheckRows checks={props.checks} />

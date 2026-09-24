@@ -14,7 +14,7 @@
   },
   "bb": {
     "name": "GitHub Insight",
-    "description": "Shows the checks of a thread's pull request in a PR tab.",
+    "description": "Shows the merge blockers, reviewers, and checks of a thread's pull request in a PR tab.",
     "branding": {
       "icon": "CheckList"
     },

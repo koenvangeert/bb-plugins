@@ -5,6 +5,7 @@ import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginThreadPanelProps } from "@get-bb/plugin-sdk/app";
 import type { InsightResult, rpcContract } from "./contract";
 import type { Check } from "./core/checks";
+import type { PrInsight } from "./core/overview";
 
 const app = await loadPluginApp(() => import("./app"));
 const prTab = app.threadPanelActions.find((action) => action.id === "pr")!;
@@ -26,10 +27,20 @@ const pr = {
   url: "https://github.com/collibra/frontend/pull/25337",
 } as const;
 
+const emptyInsight: PrInsight = { pr, blockers: [], reviewers: [], checks: [] };
+
 const insight: InsightResult = {
   kind: "ok",
   insight: {
     pr,
+    blockers: [
+      { code: "checks_failed", text: "1 check failed" },
+      { code: "review_required", text: "Review required" },
+    ],
+    reviewers: [
+      { name: "ai-governance", kind: "team", state: "pending", codeOwner: true },
+      { name: "alice", kind: "user", state: "approved", codeOwner: false },
+    ],
     checks: [
       check("lint", "passed"),
       check("a11y-test", "failed", {
@@ -81,6 +92,54 @@ describe("PR tab", () => {
     expect(
       slot.getByRole("link", { name: /open on github/i }).getAttribute("href"),
     ).toBe("https://github.com/collibra/frontend/pull/25337");
+  });
+
+  it("shows the header, the blockers, the reviewers, and the checks in this order", async () => {
+    const slot = renderTab(insight);
+
+    await slot.findByText("#25337");
+    const sections = slot
+      .getAllByRole("region")
+      .map((section) => section.getAttribute("aria-label"));
+    expect(sections).toEqual(["Merge blockers", "Reviewers", "Checks"]);
+  });
+
+  it("lists the merge blockers in order", async () => {
+    const slot = renderTab(insight);
+
+    const blockers = await slot.findByRole("region", { name: "Merge blockers" });
+    expect(
+      within(blockers)
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual(["1 check failed", "Review required"]);
+  });
+
+  it("shows a pending code owner team with its labels", async () => {
+    const slot = renderTab(insight);
+
+    const row = (await slot.findByText("ai-governance (team)")).closest("li")!;
+    expect(within(row).getByText("Pending")).toBeTruthy();
+    expect(within(row).getByText("code owner")).toBeTruthy();
+  });
+
+  it("shows an approved user without the code owner label", async () => {
+    const slot = renderTab(insight);
+
+    const row = (await slot.findByText("alice")).closest("li")!;
+    expect(within(row).getByText("Approved")).toBeTruthy();
+    expect(within(row).queryByText("code owner")).toBeNull();
+  });
+
+  it("leaves out the blockers and reviewers of a PR without them", async () => {
+    const slot = renderTab({
+      kind: "ok",
+      insight: { ...emptyInsight, checks: [check("lint", "passed")] },
+    });
+
+    await slot.findByText("#25337");
+    expect(slot.queryByRole("region", { name: "Merge blockers" })).toBeNull();
+    expect(slot.queryByRole("region", { name: "Reviewers" })).toBeNull();
   });
 
   it("groups checks by status in order failed, cancelled, running, passed, skipped", async () => {
@@ -147,7 +206,7 @@ describe("PR tab", () => {
     const slot = renderTab({
       kind: "ok",
       insight: {
-        pr,
+        ...emptyInsight,
         checks: [
           check("lint", "failed", {
             reason: "error 1",
@@ -172,7 +231,7 @@ describe("PR tab", () => {
   });
 
   it("says so when the PR has no checks", async () => {
-    const slot = renderTab({ kind: "ok", insight: { pr, checks: [] } });
+    const slot = renderTab({ kind: "ok", insight: emptyInsight });
 
     await slot.findByText("No checks on the head commit");
   });
