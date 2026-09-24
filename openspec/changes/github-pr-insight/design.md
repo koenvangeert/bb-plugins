@@ -101,6 +101,9 @@ Tests use a recorded, trimmed response of `collibra/frontend#25392` as fixture.
   - After a remount, `getPluginMetadata` returned the new value, so the write was stored.
   - `getPluginMetadata` is a plain promise with no subscribe hook. Thread DTOs do not carry plugin metadata. `useRealtime` gets only the signals of its own plugin, so the `insight.updated` event from github-insight does not reach dockside.
 - Install the fork with `bb plugin install` from its git URL or a local path, instead of the upstream `dockside`.
+- Fork: `koenvangeert/bb-plugins-dockside` (the name `bb-plugins` was taken). Install with `bb plugin install "git:https://github.com/koenvangeert/bb-plugins-dockside.git@<ref>" --subdirectory plugins/dockside`. bb refuses to install over the upstream id, so remove the upstream `dockside` first. Its `data.db` stays on disk.
+- The fork uses the vendored SDK 0.5.9 types and pins `bb-app` 0.43.4 in dockside, because 0.4.x has no `useSdk`.
+- The row hides counts when bb reports the PR merged or closed, even when the summary still says open.
 
 ## Risks / Trade-offs
 
