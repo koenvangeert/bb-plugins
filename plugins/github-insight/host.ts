@@ -10,6 +10,7 @@ import {
   type GhProcessError,
 } from "./github/gh-failure";
 import { overviewPageArgs } from "./github/overview-query";
+import { prFilesArgs } from "./github/pr-files-query";
 
 const execFileAsync = promisify(execFile);
 
@@ -20,13 +21,14 @@ export default experimental_defineHostEntry({
       runGhJson(overviewPageArgs(request), context.signal),
     fetchCheckRunDetails: (request, context) =>
       runGhJson(checkRunDetailsArgs(request), context.signal),
+    fetchPrFiles: (request, context) => runGhJson(prFilesArgs(request), context.signal),
   },
 });
 
 async function gh(args: string[], signal: AbortSignal): Promise<unknown> {
   const { stdout } = await execFileAsync("gh", args, {
     signal,
-    maxBuffer: 8 * 1024 * 1024,
+    maxBuffer: 64 * 1024 * 1024,
   });
   return JSON.parse(stdout) as unknown;
 }

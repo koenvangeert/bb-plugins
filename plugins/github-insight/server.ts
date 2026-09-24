@@ -1,17 +1,15 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import { hostContract, rpcContract, type GhResult } from "./contract";
+import { hostContract, rpcContract, type GhResult, type ReviewResult } from "./contract";
 import {
   INSIGHT_UPDATED_CHANNEL,
   type InsightUpdated,
 } from "./core/insight-updated";
 import { collectInsight } from "./core/overview";
-import { parsePullRequestUrl } from "./core/pr-ref";
+import { parsePrFiles } from "./core/pr-files";
 import { SUMMARY_METADATA_KEY } from "./core/summary";
-import {
-  createInsightService,
-  GhFailureError,
-  type PrResolution,
-} from "./refresh/insight-service";
+import { ghFailureText } from "./github/gh-failure";
+import { createPrLookup } from "./pr-lookup";
+import { createInsightService, GhFailureError } from "./refresh/insight-service";
 
 export type { rpcContract } from "./contract";
 
@@ -22,37 +20,13 @@ function unwrap(result: GhResult): unknown {
 
 export default async function plugin(bb: BbPluginApi) {
   const host = bb.hosts.experimental_client({ contract: hostContract });
-
-  async function resolvePr(environmentId: string): Promise<PrResolution> {
-    const [linked, environment] = await Promise.all([
-      bb.sdk.environments.pullRequest({ environmentId }),
-      bb.sdk.environments.get({ environmentId }),
-    ]);
-    if (linked.outcome === "absent") return { kind: "no_pr" };
-    if (linked.outcome === "unavailable") {
-      return { kind: "error", message: linked.message };
-    }
-    const { url, state } = linked.pullRequest;
-    const ref = parsePullRequestUrl(url);
-    if (ref === null) {
-      return { kind: "error", message: `Not a github.com pull request: ${url}` };
-    }
-    return {
-      kind: "pr",
-      target: {
-        ref,
-        hostId: environment.hostId,
-        openOnBb: state === "open" || state === "draft",
-      },
-    };
-  }
+  const { resolvePr, resolveEnvironmentPr } = createPrLookup(bb.sdk);
 
   const service = createInsightService({
     listThreads: async () =>
       (await bb.sdk.threads.list()).filter((thread) => thread.archivedAt === null),
-    threadEnvironment: async (threadId) =>
-      (await bb.sdk.threads.get({ threadId })).environmentId,
     resolvePr,
+    resolveEnvironmentPr,
     fetchInsight: ({ ref, hostId }) =>
       collectInsight({
         fetchOverviewPage: async (after) =>
@@ -74,9 +48,19 @@ export default async function plugin(bb: BbPluginApi) {
     warn: (message) => bb.log.warn(message),
   });
 
+  async function getReview(threadId: string): Promise<ReviewResult> {
+    const resolution = await resolvePr(threadId);
+    if (resolution.kind !== "pr") return resolution;
+    const { ref, hostId } = resolution.target;
+    const files = await host.call("fetchPrFiles", ref, { hostId });
+    if (!files.ok) return { kind: "error", message: ghFailureText(files.failure) };
+    return { kind: "ok", files: parsePrFiles(files.data) };
+  }
+
   bb.rpc.register(rpcContract, {
     getInsight: ({ threadId }) => service.getInsight(threadId),
     refresh: ({ threadId }) => service.refresh(threadId),
+    getReview: ({ threadId }) => getReview(threadId),
   });
 
   bb.background.service("pr-poller", { start: (signal) => service.run(signal) });
