@@ -1,6 +1,6 @@
 ## 1. Spikes
 
-- [ ] 1.1 In a throwaway plugin, write thread plugin metadata from the server and read it in a sidebar component with `useSdk().threads.getPluginMetadata`; record in design.md (D7) if the component gets the change over realtime or needs a refetch
+- [x] 1.1 In a throwaway plugin, write thread plugin metadata from the server and read it in a sidebar component with `useSdk().threads.getPluginMetadata`; record in design.md (D7) if the component gets the change over realtime or needs a refetch
 - [ ] 1.2 Record the overview and detail GraphQL responses for `collibra/frontend#25392` with `gh api graphql`, trim them, and save them as test fixtures under `plugins/github-insight/test/fixtures/`; verify they parse as JSON and contain duplicate check names and one failure annotation
 
 ## 2. Plugin scaffold
