@@ -34,6 +34,7 @@ import type {
   PresetEnvironmentKind,
   Project,
   Task,
+  TaskDependencyState,
   TaskLabel,
   TaskThread,
   TaskThreadLiveStatus,
@@ -198,6 +199,22 @@ export class TasksPageCursorError extends Error {
   }
 }
 
+export class TaskDependencyError extends Error {
+  constructor(
+    readonly code: "dependency_self" | "dependency_cycle",
+    message: string,
+  ) {
+    super(message);
+    this.name = "TaskDependencyError";
+  }
+}
+
+const OPEN_STATUS_SQL = "NOT IN ('done', 'canceled')";
+
+function isOpenStatus(status: Task["status"]): boolean {
+  return status !== "done" && status !== "canceled";
+}
+
 function normalizedFilterValues(values: readonly string[] | undefined) {
   return values === undefined ? null : [...new Set(values)].sort();
 }
@@ -217,6 +234,9 @@ function taskQueryFingerprint(
         ? { specified: false, value: null }
         : { specified: true, value: filters.parentTaskId },
     search: filters.search?.trim() || null,
+    ...(filters.dependency === undefined
+      ? {}
+      : { dependency: filters.dependency }),
     sort,
   });
   return createHash("sha256").update(normalized).digest("base64url");
@@ -925,6 +945,17 @@ export function createTasksStore(db: PluginDatabase) {
       );
     }
 
+    if (filters.dependency !== undefined) {
+      const openBlocker = `EXISTS (
+        SELECT 1 FROM task_dependencies d
+        JOIN tasks b ON b.id = d.blocker_task_id
+        WHERE d.blocked_task_id = t.id AND b.status ${OPEN_STATUS_SQL}
+      )`;
+      clauses.push(
+        filters.dependency === "blocked" ? openBlocker : `NOT ${openBlocker}`,
+      );
+    }
+
     const limit = filters.limit ?? TASKS_PAGE_DEFAULT_LIMIT;
     if (!Number.isInteger(limit) || limit < 1 || limit > TASKS_PAGE_MAX_LIMIT) {
       throw new Error(
@@ -1248,6 +1279,173 @@ export function createTasksStore(db: PluginDatabase) {
     return (
       db.prepare<[string]>("DELETE FROM tasks WHERE id = ?").run(id).changes > 0
     );
+  }
+
+  const findBlockerChain = db.prepare<
+    { blocker: string; blocked: string },
+    { path: string }
+  >(
+    `
+    WITH RECURSIVE chain(task_id, path) AS (
+      SELECT @blocker, @blocker
+      UNION
+      SELECT d.blocker_task_id, d.blocker_task_id || ',' || chain.path
+      FROM task_dependencies d
+      JOIN chain ON d.blocked_task_id = chain.task_id
+      WHERE instr(chain.path, d.blocker_task_id) = 0
+    )
+    SELECT path FROM chain WHERE task_id = @blocked LIMIT 1
+  `,
+  );
+
+  const addTaskDependencyTransaction = db.transaction(
+    (blockerTaskId: string, blockedTaskId: string): boolean => {
+      const blocker = requireTask(blockerTaskId);
+      const blocked = requireTask(blockedTaskId);
+      if (blocker.id === blocked.id) {
+        throw new TaskDependencyError(
+          "dependency_self",
+          `A task cannot block itself: ${blocker.key}`,
+        );
+      }
+      const chain = findBlockerChain.get({
+        blocker: blocker.id,
+        blocked: blocked.id,
+      });
+      if (chain) {
+        const keys = chain.path.split(",").map((id) => requireTask(id).key);
+        throw new TaskDependencyError(
+          "dependency_cycle",
+          `${blocker.key} cannot block ${blocked.key}: this makes a cycle (${[
+            ...keys,
+            blocked.key,
+          ].join(" blocks ")})`,
+        );
+      }
+      return (
+        db
+          .prepare<[string, string, string]>(
+            `
+            INSERT INTO task_dependencies (blocker_task_id, blocked_task_id, created_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT (blocker_task_id, blocked_task_id) DO NOTHING
+          `,
+          )
+          .run(blocker.id, blocked.id, nowIso()).changes > 0
+      );
+    },
+  );
+
+  function addTaskDependency(
+    blockerTaskId: string,
+    blockedTaskId: string,
+  ): boolean {
+    return addTaskDependencyTransaction(blockerTaskId, blockedTaskId);
+  }
+
+  function removeTaskDependency(
+    blockerTaskId: string,
+    blockedTaskId: string,
+  ): boolean {
+    return (
+      db
+        .prepare<[string, string]>(
+          "DELETE FROM task_dependencies WHERE blocker_task_id = ? AND blocked_task_id = ?",
+        )
+        .run(blockerTaskId, blockedTaskId).changes > 0
+    );
+  }
+
+  function listBlockers(taskId: string): Task[] {
+    return db
+      .prepare<[string], TaskRow>(
+        `
+        ${taskSelect}
+        JOIN task_dependencies d ON d.blocker_task_id = t.id
+        WHERE d.blocked_task_id = ?
+        ORDER BY p.prefix, t.number
+      `,
+      )
+      .all(taskId)
+      .map(taskFromRow);
+  }
+
+  function listBlockedTasks(taskId: string): Task[] {
+    return db
+      .prepare<[string], TaskRow>(
+        `
+        ${taskSelect}
+        JOIN task_dependencies d ON d.blocked_task_id = t.id
+        WHERE d.blocker_task_id = ?
+        ORDER BY p.prefix, t.number
+      `,
+      )
+      .all(taskId)
+      .map(taskFromRow);
+  }
+
+  function dependencyState(
+    taskIds: readonly string[],
+  ): Map<string, TaskDependencyState> {
+    const states = new Map<string, TaskDependencyState>();
+    for (const taskId of taskIds) {
+      states.set(taskId, {
+        blockerIds: [],
+        openBlockerIds: [],
+        blockedIds: [],
+        openBlockedIds: [],
+      });
+    }
+    for (let offset = 0; offset < taskIds.length; offset += 500) {
+      const ids = taskIds.slice(offset, offset + 500);
+      if (ids.length === 0) continue;
+      const placeholders = ids.map(() => "?").join(", ");
+      const rows = db
+        .prepare<
+          string[],
+          {
+            blocker_task_id: string;
+            blocked_task_id: string;
+            blocker_status: Task["status"];
+            blocked_status: Task["status"];
+          }
+        >(
+          `
+          SELECT
+            d.blocker_task_id,
+            d.blocked_task_id,
+            b.status AS blocker_status,
+            t.status AS blocked_status
+          FROM task_dependencies d
+          JOIN tasks b ON b.id = d.blocker_task_id
+          JOIN tasks t ON t.id = d.blocked_task_id
+          WHERE d.blocked_task_id IN (${placeholders})
+            OR d.blocker_task_id IN (${placeholders})
+          ORDER BY d.created_at, d.blocker_task_id, d.blocked_task_id
+        `,
+        )
+        .all(...ids, ...ids);
+      for (const row of rows) {
+        const blocked = states.get(row.blocked_task_id);
+        if (blocked && !blocked.blockerIds.includes(row.blocker_task_id)) {
+          blocked.blockerIds.push(row.blocker_task_id);
+          if (isOpenStatus(row.blocker_status)) {
+            blocked.openBlockerIds.push(row.blocker_task_id);
+          }
+        }
+        const blocker = states.get(row.blocker_task_id);
+        if (blocker && !blocker.blockedIds.includes(row.blocked_task_id)) {
+          blocker.blockedIds.push(row.blocked_task_id);
+          if (
+            isOpenStatus(row.blocker_status) &&
+            isOpenStatus(row.blocked_status)
+          ) {
+            blocker.openBlockedIds.push(row.blocked_task_id);
+          }
+        }
+      }
+    }
+    return states;
   }
 
   function getLabel(id: string): Label | undefined {
@@ -1829,6 +2027,11 @@ export function createTasksStore(db: PluginDatabase) {
     updateTask,
     updatePosition,
     deleteTask,
+    addTaskDependency,
+    removeTaskDependency,
+    listBlockers,
+    listBlockedTasks,
+    dependencyState,
     createLabel,
     getLabel,
     listLabels,

@@ -176,9 +176,19 @@ export interface ListTasksFilters {
   activeOnly?: boolean;
   parentTaskId?: string | null;
   search?: string;
+  dependency?: TaskDependencyFilter;
   sort?: TaskSort;
   limit?: number;
   cursor?: string;
+}
+
+export type TaskDependencyFilter = "ready" | "blocked";
+
+export interface TaskDependencyState {
+  blockerIds: string[];
+  openBlockerIds: string[];
+  blockedIds: string[];
+  openBlockedIds: string[];
 }
 
 export interface ListTasksPage {

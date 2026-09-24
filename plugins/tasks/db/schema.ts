@@ -239,6 +239,26 @@ const MIGRATIONS = [
     ALTER TABLE presets ADD COLUMN service_tier TEXT
       CHECK (service_tier IN ('default', 'fast'));
   `,
+  `
+    CREATE TABLE task_dependencies (
+      blocker_task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+      blocked_task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (blocker_task_id, blocked_task_id),
+      CHECK (blocker_task_id <> blocked_task_id)
+    );
+    CREATE INDEX idx_task_dependencies_blocked
+      ON task_dependencies(blocked_task_id, blocker_task_id);
+
+    CREATE TRIGGER task_list_revision_dependencies_insert
+    AFTER INSERT ON task_dependencies BEGIN
+      UPDATE task_list_revision SET revision = revision + 1 WHERE id = 1;
+    END;
+    CREATE TRIGGER task_list_revision_dependencies_delete
+    AFTER DELETE ON task_dependencies BEGIN
+      UPDATE task_list_revision SET revision = revision + 1 WHERE id = 1;
+    END;
+  `,
 ] as const;
 
 export function initializeTasksSchema(db: PluginDatabase): void {
