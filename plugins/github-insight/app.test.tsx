@@ -318,3 +318,118 @@ describe("PR tab", () => {
     await slot.findByText("No checks on the head commit");
   });
 });
+
+const banner = app.composerCustomizations
+  .find((customization) => customization.id === "pr-insight")!
+  .banners!.find((entry) => entry.id === "merge-blockers")!;
+
+function renderBanner(result: InsightResult | (() => InsightResult)) {
+  const getInsight = typeof result === "function" ? result : () => result;
+  return renderSlot<object, typeof rpcContract>(
+    banner,
+    {},
+    {
+      rpc: { getInsight, refresh: getInsight },
+      composer: { scope: { kind: "thread", threadId: "thr_1" } },
+      openThreadPanel: () => true,
+    },
+  );
+}
+
+const blocked: PrInsight = {
+  ...emptyInsight,
+  blockers: [
+    { code: "checks_failed", text: "2 checks failed" },
+    { code: "behind", text: "Branch out of date" },
+    { code: "review_required", text: "Review required" },
+  ],
+  reviewers: [{ name: "ai-governance", kind: "team", state: "pending", codeOwner: true }],
+};
+const blockedInsight = ok(blocked);
+
+async function settled(slot: ReturnType<typeof renderBanner>) {
+  await act(async () => {});
+  expect(slot.inspection.rpcCalls).toHaveLength(1);
+}
+
+describe("Composer banner", () => {
+  it("shows only on thread composers", () => {
+    expect(
+      app.composerCustomizations.find((customization) => customization.id === "pr-insight"),
+    ).toMatchObject({ scopes: ["thread"] });
+  });
+
+  it("shows failed checks, pending review, and an out of date branch", async () => {
+    const slot = renderBanner(blockedInsight);
+
+    const button = await slot.findByRole("button");
+    expect(button.textContent).toContain("2 checks failed");
+    expect(button.textContent).toContain("1 review pending");
+    expect(button.textContent).toContain("Branch out of date");
+    expect(button.textContent).not.toContain("Review required");
+  });
+
+  it("opens the PR tab on click", async () => {
+    const slot = renderBanner(blockedInsight);
+
+    fireEvent.click(await slot.findByRole("button"));
+
+    expect(slot.inspection.navigateCalls).toEqual([
+      { method: "openThreadPanel", options: { actionId: "pr" } },
+    ]);
+  });
+
+  it("asks for the insight of the composer's thread", async () => {
+    const slot = renderBanner(blockedInsight);
+
+    await slot.findByRole("button");
+    expect(slot.inspection.rpcCalls).toEqual([
+      expect.objectContaining({ method: "getInsight", input: { threadId: "thr_1" } }),
+    ]);
+  });
+
+  it("is hidden for a PR that is ready to merge", async () => {
+    const slot = renderBanner(ok(emptyInsight));
+
+    await settled(slot);
+    expect(slot.queryByRole("button")).toBeNull();
+  });
+
+  it("is hidden when the thread has no PR", async () => {
+    const slot = renderBanner({ kind: "no_pr" });
+
+    await settled(slot);
+    expect(slot.queryByRole("button")).toBeNull();
+  });
+
+  it("is hidden for a merged PR", async () => {
+    const slot = renderBanner(ok({ ...blocked, pr: { ...pr, state: "merged" } }));
+
+    await settled(slot);
+    expect(slot.queryByRole("button")).toBeNull();
+  });
+
+  it("is hidden when the insight cannot be read", async () => {
+    const slot = renderBanner({ kind: "error", message: "gh not logged in" });
+
+    await settled(slot);
+    expect(slot.queryByRole("button")).toBeNull();
+  });
+
+  it("keeps showing the last good data when the last refresh failed", async () => {
+    const slot = renderBanner(ok(blocked, "rate limited"));
+
+    expect((await slot.findByRole("button")).textContent).toContain("2 checks failed");
+  });
+
+  it("updates when the server says this thread's insight changed", async () => {
+    let current: InsightResult = blockedInsight;
+    const slot = renderBanner(() => current);
+    await slot.findByRole("button");
+
+    current = ok(emptyInsight);
+    await slot.behavior.emitRealtime("insight.updated", { threadIds: ["thr_1"] });
+
+    expect(slot.queryByRole("button")).toBeNull();
+  });
+});

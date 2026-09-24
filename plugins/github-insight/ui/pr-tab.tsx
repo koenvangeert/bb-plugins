@@ -1,14 +1,13 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { UrlLink, useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
-import type { InsightResult, rpcContract } from "../contract";
+import type { ReactNode } from "react";
+import { UrlLink } from "@get-bb/plugin-sdk/app";
 import type { Blocker } from "../core/blockers";
-import { INSIGHT_UPDATED_CHANNEL, mentionsThread } from "../core/insight-updated";
 import type { Check, CheckStatus } from "../core/checks";
 import type { CheckFailure } from "../core/failure";
 import type { PrInsight } from "../core/overview";
 import { reviewerKey, type Reviewer } from "../core/reviewers";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
+import { useInsight } from "./use-insight";
 
 const STATUS_ORDER: readonly CheckStatus[] = [
   "failed",
@@ -45,56 +44,6 @@ const REVIEWER_STATE_LABEL: Record<Reviewer["state"], string> = {
   commented: "Commented",
   dismissed: "Dismissed",
 };
-
-interface InsightState {
-  result: InsightResult | null;
-  refreshing: boolean;
-  refresh: () => void;
-}
-
-function useInsight(threadId: string): InsightState {
-  const rpc = useRpc<typeof rpcContract>();
-  const [loaded, setLoaded] = useState<{ threadId: string; result: InsightResult } | null>(
-    null,
-  );
-  const [refreshingThreadId, setRefreshingThreadId] = useState<string | null>(null);
-  const latestRequest = useRef(0);
-
-  const load = useCallback(
-    async (method: "getInsight" | "refresh") => {
-      const request = ++latestRequest.current;
-      const result = await rpc.call(method, { threadId }).catch(
-        (error: unknown): InsightResult => ({
-          kind: "error",
-          message: error instanceof Error ? error.message : String(error),
-        }),
-      );
-      if (request === latestRequest.current) setLoaded({ threadId, result });
-    },
-    [rpc, threadId],
-  );
-
-  useEffect(() => {
-    void load("getInsight");
-    return () => {
-      latestRequest.current++;
-    };
-  }, [load]);
-
-  useRealtime(INSIGHT_UPDATED_CHANNEL, (payload) => {
-    if (mentionsThread(payload, threadId)) void load("getInsight");
-  });
-
-  const refresh = useCallback(() => {
-    setRefreshingThreadId(threadId);
-    void load("refresh").finally(() =>
-      setRefreshingThreadId((current) => (current === threadId ? null : current)),
-    );
-  }, [load, threadId]);
-
-  const result = loaded?.threadId === threadId ? loaded.result : null;
-  return { result, refreshing: refreshingThreadId === threadId, refresh };
-}
 
 export function PrTab({ threadId }: { threadId: string }) {
   const { result, refreshing, refresh } = useInsight(threadId);

@@ -47,7 +47,7 @@ const READY_TO_MERGE: ReadonlySet<BlockerInput["mergeStateStatus"]> = new Set([
   "HAS_HOOKS",
 ]);
 
-function countOf(count: number, noun: string): string {
+export function countOf(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
 
