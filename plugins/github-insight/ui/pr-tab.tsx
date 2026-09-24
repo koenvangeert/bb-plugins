@@ -1,7 +1,8 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { UrlLink, useRpc } from "@get-bb/plugin-sdk/app";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { UrlLink, useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
 import type { InsightResult, rpcContract } from "../contract";
 import type { Blocker } from "../core/blockers";
+import { INSIGHT_UPDATED_CHANNEL, mentionsThread } from "../core/insight-updated";
 import type { Check, CheckStatus } from "../core/checks";
 import type { CheckFailure } from "../core/failure";
 import type { PrInsight } from "../core/overview";
@@ -45,51 +46,134 @@ const REVIEWER_STATE_LABEL: Record<Reviewer["state"], string> = {
   dismissed: "Dismissed",
 };
 
-function useInsight(threadId: string): InsightResult | null {
+interface InsightState {
+  result: InsightResult | null;
+  refreshing: boolean;
+  refresh: () => void;
+}
+
+function useInsight(threadId: string): InsightState {
   const rpc = useRpc<typeof rpcContract>();
-  const [result, setResult] = useState<InsightResult | null>(null);
+  const [loaded, setLoaded] = useState<{ threadId: string; result: InsightResult } | null>(
+    null,
+  );
+  const [refreshingThreadId, setRefreshingThreadId] = useState<string | null>(null);
+  const latestRequest = useRef(0);
+
+  const load = useCallback(
+    async (method: "getInsight" | "refresh") => {
+      const request = ++latestRequest.current;
+      const result = await rpc.call(method, { threadId }).catch(
+        (error: unknown): InsightResult => ({
+          kind: "error",
+          message: error instanceof Error ? error.message : String(error),
+        }),
+      );
+      if (request === latestRequest.current) setLoaded({ threadId, result });
+    },
+    [rpc, threadId],
+  );
+
   useEffect(() => {
-    let current = true;
-    setResult(null);
-    rpc.call("getInsight", { threadId }).then(
-      (next) => {
-        if (current) setResult(next);
-      },
-      (error: unknown) => {
-        if (current) {
-          setResult({
-            kind: "error",
-            message: error instanceof Error ? error.message : String(error),
-          });
-        }
-      },
-    );
+    void load("getInsight");
     return () => {
-      current = false;
+      latestRequest.current++;
     };
-  }, [rpc, threadId]);
-  return result;
+  }, [load]);
+
+  useRealtime(INSIGHT_UPDATED_CHANNEL, (payload) => {
+    if (mentionsThread(payload, threadId)) void load("getInsight");
+  });
+
+  const refresh = useCallback(() => {
+    setRefreshingThreadId(threadId);
+    void load("refresh").finally(() =>
+      setRefreshingThreadId((current) => (current === threadId ? null : current)),
+    );
+  }, [load, threadId]);
+
+  const result = loaded?.threadId === threadId ? loaded.result : null;
+  return { result, refreshing: refreshingThreadId === threadId, refresh };
 }
 
 export function PrTab({ threadId }: { threadId: string }) {
-  const result = useInsight(threadId);
+  const { result, refreshing, refresh } = useInsight(threadId);
   if (result === null) return <Notice>Loading pull request…</Notice>;
   if (result.kind === "no_pr") {
     return <Notice>No pull request for this thread</Notice>;
   }
   if (result.kind === "error") {
     return (
-      <p role="alert" className="text-sm text-destructive">
-        {result.message}
-      </p>
+      <RefreshError message={result.message} refreshedAt={null} retry={refresh} busy={refreshing} />
     );
   }
   return (
     <div className="flex flex-col gap-4">
-      <PrHeader pr={result.insight.pr} />
+      <PrHeader
+        pr={result.insight.pr}
+        action={<RefreshButton refreshing={refreshing} refresh={refresh} />}
+      />
+      {result.error !== null && (
+        <RefreshError
+          message={result.error}
+          refreshedAt={result.refreshedAt}
+          retry={refresh}
+          busy={refreshing}
+        />
+      )}
       <BlockerList blockers={result.insight.blockers} />
       <ReviewerList reviewers={result.insight.reviewers} />
       <CheckList checks={result.insight.checks} />
+    </div>
+  );
+}
+
+const BUTTON_CLASS =
+  "inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-0.5 text-xs hover:bg-muted disabled:opacity-60";
+
+function RefreshButton({ refreshing, refresh }: { refreshing: boolean; refresh: () => void }) {
+  return (
+    <button type="button" className={BUTTON_CLASS} onClick={refresh} disabled={refreshing}>
+      <Icon
+        name="ArrowReloadHorizontal"
+        className={cn("size-3.5", refreshing && "animate-spin")}
+      />
+      {refreshing ? "Refreshing…" : "Refresh"}
+    </button>
+  );
+}
+
+interface RefreshErrorProps {
+  message: string;
+  refreshedAt: number | null;
+  retry: () => void;
+  busy: boolean;
+}
+
+function RefreshError({ message, refreshedAt, retry, busy }: RefreshErrorProps) {
+  return (
+    <div
+      role="alert"
+      className="flex items-center gap-2 rounded-lg border border-destructive/40 px-3 py-2 text-sm"
+    >
+      <Icon name="AlertCircle" className="size-4 shrink-0 text-destructive" />
+      <div className="flex min-w-0 flex-col">
+        <span className="break-words text-destructive">{message}</span>
+        {refreshedAt !== null && (
+          <span className="text-xs text-muted-foreground">
+            Last updated{" "}
+            <time dateTime={new Date(refreshedAt).toISOString()}>
+              {new Date(refreshedAt).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </time>
+          </span>
+        )}
+      </div>
+      <button type="button" className={cn(BUTTON_CLASS, "ml-auto")} onClick={retry} disabled={busy}>
+        Retry
+      </button>
     </div>
   );
 }
@@ -105,7 +189,7 @@ function Notice({ children }: { children: ReactNode }) {
   );
 }
 
-function PrHeader({ pr }: { pr: PrInsight["pr"] }) {
+function PrHeader({ pr, action }: { pr: PrInsight["pr"]; action: ReactNode }) {
   return (
     <header className="flex flex-col gap-1">
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -116,6 +200,7 @@ function PrHeader({ pr }: { pr: PrInsight["pr"] }) {
         <UrlLink href={pr.url} className="ml-auto underline-offset-2 hover:underline">
           Open on GitHub
         </UrlLink>
+        {action}
       </div>
       <h2 className="text-sm font-medium">{pr.title}</h2>
     </header>

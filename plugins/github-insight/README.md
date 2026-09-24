@@ -5,13 +5,16 @@ Shows the merge blockers, reviewers, and checks of a thread's pull request in a 
 ## How it works
 
 ```
-app (PR tab) --getInsight--> server --fetchOverviewPage--> host (gh api graphql)
+app (PR tab) --getInsight/refresh--> server --fetchOverviewPage--> host (gh api graphql)
+      ^                                 |
+      +------ insight.updated ----------+  (pr-poller, every 60s)
 ```
 
 - `server.ts`: finds the thread's PR through `bb.sdk.environments.pullRequest` and asks the thread's host for it. No PR means no GitHub call.
-- `host.ts`: runs `gh api graphql` with the `gh` login of the host. It returns the raw JSON.
+- `refresh/insight-service.ts`: keeps the last insight per PR in memory. The `pr-poller` service refreshes each open PR every 60 seconds, one refresh per PR, max 4 at once. A merged or closed PR gets one last refresh. After a rate limit, it waits until the reset time or 5 minutes. After a refresh that changes the data, it publishes `insight.updated` with the thread ids.
+- `host.ts`: runs `gh api graphql` with the `gh` login of the host. It returns the raw JSON, or a failure: `gh_missing`, `gh_logged_out`, `rate_limited` (with the reset time from `gh api rate_limit`), or `failed`.
 - `core/`: pure parsing. One entry per check name (newest run), mapped to `failed`, `running`, `cancelled`, `passed`, or `skipped`. `buildReviewers` puts open requests (pending) before latest reviews. `buildBlockers` gives the blockers in fixed order, and `blocked` only when no other code applies.
-- `ui/pr-tab.tsx`: the PR header, the merge blockers, the reviewers, and the checks, grouped by status. Passed and skipped are collapsed.
+- `ui/pr-tab.tsx`: the PR header with a refresh button, the merge blockers, the reviewers, and the checks, grouped by status. Passed and skipped are collapsed. A failed refresh shows the error with a retry button, and keeps the last good data with its time.
 
 ## Requirements
 

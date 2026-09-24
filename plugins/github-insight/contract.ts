@@ -1,6 +1,7 @@
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { prInsightSchema } from "./core/overview";
+import { ghFailureSchema } from "./github/gh-failure";
 
 const overviewPageRequestSchema = z
   .object({
@@ -17,27 +18,38 @@ const checkRunDetailsRequestSchema = z
   .strict();
 export type CheckRunDetailsRequest = z.infer<typeof checkRunDetailsRequestSchema>;
 
+const ghResultSchema = z.discriminatedUnion("ok", [
+  z.object({ ok: z.literal(true), data: z.unknown() }),
+  z.object({ ok: z.literal(false), failure: ghFailureSchema }),
+]);
+export type GhResult = z.infer<typeof ghResultSchema>;
+
 export const hostContract = defineRpcContract({
   fetchOverviewPage: {
     input: overviewPageRequestSchema,
-    output: z.unknown(),
+    output: ghResultSchema,
   },
   fetchCheckRunDetails: {
     input: checkRunDetailsRequestSchema,
-    output: z.unknown(),
+    output: ghResultSchema,
   },
 });
 
 export const insightResultSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("no_pr") }),
   z.object({ kind: z.literal("error"), message: z.string() }),
-  z.object({ kind: z.literal("ok"), insight: prInsightSchema }),
+  z.object({
+    kind: z.literal("ok"),
+    insight: prInsightSchema,
+    refreshedAt: z.number(),
+    error: z.string().nullable(),
+  }),
 ]);
 export type InsightResult = z.infer<typeof insightResultSchema>;
 
+const threadRequestSchema = z.object({ threadId: z.string().min(1) }).strict();
+
 export const rpcContract = defineRpcContract({
-  getInsight: {
-    input: z.object({ threadId: z.string().min(1) }).strict(),
-    output: insightResultSchema,
-  },
+  getInsight: { input: threadRequestSchema, output: insightResultSchema },
+  refresh: { input: threadRequestSchema, output: insightResultSchema },
 });

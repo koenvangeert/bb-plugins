@@ -6,5 +6,7 @@ See the checks of a thread's pull request without leaving bb.
 - Reviewers with their state, "(team)" for teams, and a "code owner" label. An open review request shows as pending, also after an earlier review.
 - Every check on the head commit, one entry per check name, grouped by status.
 - Failed and cancelled checks show why: a reason and up to 5 failure annotations.
+- Updates by itself every 60 seconds while the PR is open. A refresh button updates it at once.
+- Errors show as "gh not installed", "gh not logged in", or "rate limited", with a retry button. The last good data stays visible with its time.
 
 The plugin uses the `gh` CLI login of the host that runs the thread. It needs no token of its own.
