@@ -2,6 +2,7 @@ import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { prInsightSchema } from "./core/overview";
 import { reviewFileSchema } from "./core/pr-files";
+import { threadPlacementSchema } from "./core/thread-placement";
 import { ghFailureSchema } from "./github/gh-failure";
 
 const prRequestFields = {
@@ -10,10 +11,10 @@ const prRequestFields = {
   number: z.number().int().positive(),
 };
 
-const overviewPageRequestSchema = z
+const prPageRequestSchema = z
   .object({ ...prRequestFields, after: z.string().nullable() })
   .strict();
-export type OverviewPageRequest = z.infer<typeof overviewPageRequestSchema>;
+export type PrPageRequest = z.infer<typeof prPageRequestSchema>;
 
 const checkRunDetailsRequestSchema = z
   .object({ ids: z.array(z.string().min(1)).min(1) })
@@ -31,7 +32,7 @@ export type GhResult = z.infer<typeof ghResultSchema>;
 
 export const hostContract = defineRpcContract({
   fetchOverviewPage: {
-    input: overviewPageRequestSchema,
+    input: prPageRequestSchema,
     output: ghResultSchema,
   },
   fetchCheckRunDetails: {
@@ -40,6 +41,10 @@ export const hostContract = defineRpcContract({
   },
   fetchPrFiles: {
     input: prFilesRequestSchema,
+    output: ghResultSchema,
+  },
+  fetchReviewThreads: {
+    input: prPageRequestSchema,
     output: ghResultSchema,
   },
 });
@@ -59,7 +64,11 @@ export type InsightResult = z.infer<typeof insightResultSchema>;
 export const reviewResultSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("no_pr") }),
   z.object({ kind: z.literal("error"), message: z.string() }),
-  z.object({ kind: z.literal("ok"), files: z.array(reviewFileSchema) }),
+  z.object({
+    kind: z.literal("ok"),
+    files: z.array(reviewFileSchema),
+    threads: threadPlacementSchema,
+  }),
 ]);
 export type ReviewResult = z.infer<typeof reviewResultSchema>;
 

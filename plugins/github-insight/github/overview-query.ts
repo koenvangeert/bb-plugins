@@ -1,4 +1,4 @@
-import type { OverviewPageRequest } from "../contract";
+import type { PrPageRequest } from "../contract";
 
 const OVERVIEW_QUERY = `
 query ($owner: String!, $repo: String!, $number: Int!, $after: String, $firstPage: Boolean!) {
@@ -54,7 +54,7 @@ query ($owner: String!, $repo: String!, $number: Int!, $after: String, $firstPag
 `;
 
 // -f sends a raw string and -F coerces the value, so only the number uses -F.
-export function overviewPageArgs(request: OverviewPageRequest): string[] {
+export function overviewPageArgs(request: PrPageRequest): string[] {
   const args = [
     "api",
     "graphql",

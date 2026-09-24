@@ -1,33 +1,55 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs";
+import { parsePatchFiles, type DiffLineAnnotation, type FileDiffMetadata } from "@pierre/diffs";
 import { FileDiff } from "@pierre/diffs/react";
 import { experimental_useCodeTheme as useCodeTheme } from "@get-bb/plugin-sdk/app";
 import { gitPatch, type ReviewFile } from "../core/pr-files";
+import type { ReviewThread } from "../core/review-threads";
+import type { PlacedThread } from "../core/thread-placement";
+import { ReviewThreadCard } from "./review-thread";
 
-export function PrFileDiff({ file }: { file: ReviewFile }) {
-  const fileDiff = useMemo(() => parseFileDiff(file), [file]);
-  if (fileDiff === null) return <UnavailableFileDiff path={file.path} />;
-  return <LazyFileDiff fileDiff={fileDiff} />;
+interface PrFileDiffProps {
+  file: ReviewFile;
+  threads: readonly PlacedThread[];
 }
 
-function UnavailableFileDiff({ path }: { path: string }) {
+export function PrFileDiff({ file, threads }: PrFileDiffProps) {
+  const fileDiff = useMemo(() => parseFileDiff(file), [file]);
+  if (fileDiff === null) return <UnavailableFileDiff path={file.path} threads={threads} />;
+  return <LazyFileDiff fileDiff={fileDiff} threads={threads} />;
+}
+
+function UnavailableFileDiff({ path, threads }: { path: string; threads: readonly PlacedThread[] }) {
   return (
     <section className="flex flex-col gap-1 border-b border-border px-3 py-2 text-sm">
       <span className="font-mono text-xs">{path}</span>
       <span className="text-muted-foreground">Diff not available</span>
+      {threads.map(({ thread }) => (
+        <ReviewThreadCard key={thread.id} thread={thread} />
+      ))}
     </section>
   );
 }
 
-function LazyFileDiff({ fileDiff }: { fileDiff: FileDiffMetadata }) {
+function LazyFileDiff({ fileDiff, threads }: { fileDiff: FileDiffMetadata; threads: readonly PlacedThread[] }) {
   const { visible, ref } = useVisibleOnce<HTMLElement>();
   const theme = useCodeTheme();
+  const lineAnnotations = useMemo(
+    () =>
+      threads.map(({ thread, side, lineNumber }): DiffLineAnnotation<ReviewThread> => ({
+        side,
+        lineNumber,
+        metadata: thread,
+      })),
+    [threads],
+  );
   return (
     <section ref={ref} className="min-h-10 border-b border-border">
       {visible && (
         <FileDiff
           fileDiff={fileDiff}
           options={{ theme: theme.name, themeType: theme.mode, overflow: "wrap" }}
+          lineAnnotations={lineAnnotations}
+          renderAnnotation={({ metadata }) => <ReviewThreadCard key={metadata.id} thread={metadata} />}
         />
       )}
     </section>

@@ -9,6 +9,6 @@ See the checks of a thread's pull request without leaving bb.
 - Updates by itself every 60 seconds while the PR is open. A refresh button updates it at once.
 - Errors show as "gh not installed", "gh not logged in", or "rate limited", with a retry button. The last good data stays visible with its time.
 
-- A **Review** tab with the diff of each changed file at the PR head. Files without a patch show "Diff not available".
+- A **Review** tab with the diff of each changed file at the PR head. Files without a patch show "Diff not available". Review threads show below their line, with all comments. Outdated threads show in an "Outdated" section at the top. Resolved threads show collapsed with "Show resolved". The top shows "N open" and "N outdated".
 
 The plugin uses the `gh` CLI login of the host that runs the thread. It needs no token of its own.

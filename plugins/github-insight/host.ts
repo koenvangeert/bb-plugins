@@ -11,6 +11,7 @@ import {
 } from "./github/gh-failure";
 import { overviewPageArgs } from "./github/overview-query";
 import { prFilesArgs } from "./github/pr-files-query";
+import { reviewThreadsPageArgs } from "./github/review-threads-query";
 
 const execFileAsync = promisify(execFile);
 
@@ -22,6 +23,8 @@ export default experimental_defineHostEntry({
     fetchCheckRunDetails: (request, context) =>
       runGhJson(checkRunDetailsArgs(request), context.signal),
     fetchPrFiles: (request, context) => runGhJson(prFilesArgs(request), context.signal),
+    fetchReviewThreads: (request, context) =>
+      runGhJson(reviewThreadsPageArgs(request), context.signal),
   },
 });
 
