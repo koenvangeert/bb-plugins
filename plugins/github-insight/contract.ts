@@ -91,8 +91,19 @@ export type ReviewResult = z.infer<typeof reviewResultSchema>;
 
 const threadRequestSchema = z.object({ threadId: z.string().min(1) }).strict();
 
+const sendToAgentRequestSchema = z
+  .object({ threadId: z.string().min(1), reviewThreadIds: z.array(z.string().min(1)).min(1) })
+  .strict();
+
+export const sendToAgentResultSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("sent"), delivery: z.enum(["sent", "queued"]), threadCount: z.number() }),
+  z.object({ kind: z.literal("error"), message: z.string() }),
+]);
+export type SendToAgentResult = z.infer<typeof sendToAgentResultSchema>;
+
 export const rpcContract = defineRpcContract({
   getInsight: { input: threadRequestSchema, output: insightResultSchema },
   refresh: { input: threadRequestSchema, output: insightResultSchema },
   getReview: { input: threadRequestSchema, output: reviewResultSchema },
+  sendToAgent: { input: sendToAgentRequestSchema, output: sendToAgentResultSchema },
 });

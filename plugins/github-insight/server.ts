@@ -58,6 +58,10 @@ export default async function plugin(bb: BbPluginApi) {
       unwrap(await host.call("fetchReviewThreads", { ...ref, after }, { hostId })),
     drafts: createDraftStore(bb.storage.kv),
     publish: (update) => bb.realtime.publish(REVIEW_UPDATED_CHANNEL, update),
+    sendMessage: async (threadId, text) => {
+      const result = await bb.sdk.threads.send({ threadId, mode: "auto", input: [{ type: "text", text, mentions: [] }] });
+      return result.delivery;
+    },
   });
 
   async function getReview(threadId: string): Promise<ReviewResult> {
@@ -69,6 +73,7 @@ export default async function plugin(bb: BbPluginApi) {
     getInsight: ({ threadId }) => service.getInsight(threadId),
     refresh: ({ threadId }) => service.refresh(threadId),
     getReview: ({ threadId }) => getReview(threadId),
+    sendToAgent: ({ threadId, reviewThreadIds }) => review.sendToAgent(threadId, reviewThreadIds),
   });
 
   bb.cli.register(
