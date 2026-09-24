@@ -96,7 +96,7 @@ describe("parseReviewThreads", () => {
 describe("collectReviewThreads", () => {
   it("follows the cursor and joins all pages", async () => {
     const asked: (string | null)[] = [];
-    const threads = await collectReviewThreads(async (after) => {
+    const { threads, complete } = await collectReviewThreads(async (after) => {
       asked.push(after);
       return after === null
         ? threadsPage([threadNode("t1")], { hasNextPage: true, endCursor: "c1" })
@@ -105,15 +105,17 @@ describe("collectReviewThreads", () => {
 
     expect(asked).toEqual([null, "c1"]);
     expect(threads.map((thread) => thread.id)).toEqual(["t1", "t2"]);
+    expect(complete).toBe(true);
   });
 
-  it(`stops after ${MAX_THREAD_PAGES} pages`, async () => {
+  it(`stops after ${MAX_THREAD_PAGES} pages and says the list is not complete`, async () => {
     let calls = 0;
-    await collectReviewThreads(async () => {
+    const { complete } = await collectReviewThreads(async () => {
       calls++;
       return threadsPage([threadNode(`t${calls}`)], { hasNextPage: true, endCursor: "next" });
     });
 
     expect(calls).toBe(MAX_THREAD_PAGES);
+    expect(complete).toBe(false);
   });
 });

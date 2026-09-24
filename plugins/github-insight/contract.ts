@@ -1,5 +1,6 @@
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
+import { draftsSchema } from "./core/drafts";
 import { prInsightSchema } from "./core/overview";
 import { reviewFileSchema } from "./core/pr-files";
 import { threadPlacementSchema } from "./core/thread-placement";
@@ -30,6 +31,17 @@ const ghResultSchema = z.discriminatedUnion("ok", [
 ]);
 export type GhResult = z.infer<typeof ghResultSchema>;
 
+const readTextFileRequestSchema = z
+  .object({ path: z.string().min(1), cwd: z.string().nullable() })
+  .strict();
+export type ReadTextFileRequest = z.infer<typeof readTextFileRequestSchema>;
+
+const readTextFileResultSchema = z.discriminatedUnion("ok", [
+  z.object({ ok: z.literal(true), text: z.string() }),
+  z.object({ ok: z.literal(false), message: z.string() }),
+]);
+export type ReadTextFileResult = z.infer<typeof readTextFileResultSchema>;
+
 export const hostContract = defineRpcContract({
   fetchOverviewPage: {
     input: prPageRequestSchema,
@@ -46,6 +58,10 @@ export const hostContract = defineRpcContract({
   fetchReviewThreads: {
     input: prPageRequestSchema,
     output: ghResultSchema,
+  },
+  readTextFile: {
+    input: readTextFileRequestSchema,
+    output: readTextFileResultSchema,
   },
 });
 
@@ -68,6 +84,7 @@ export const reviewResultSchema = z.discriminatedUnion("kind", [
     kind: z.literal("ok"),
     files: z.array(reviewFileSchema),
     threads: threadPlacementSchema,
+    drafts: draftsSchema,
   }),
 ]);
 export type ReviewResult = z.infer<typeof reviewResultSchema>;

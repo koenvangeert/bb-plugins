@@ -59,13 +59,14 @@ const reviewTab = app.threadPanelActions.find((action) => action.id === "review"
 afterEach(cleanup);
 
 const noThreads: ThreadPlacement = { placed: [], outdated: [] };
-const recorded: ReviewResult = { kind: "ok", files: parsePrFiles(prFiles), threads: noThreads };
+const recorded: ReviewResult = { kind: "ok", files: parsePrFiles(prFiles), threads: noThreads, drafts: {} };
 
 const threadedFiles = parsePrFiles(threadedPrFiles);
 const threaded = {
   kind: "ok",
   files: threadedFiles,
   threads: placeThreads(threadedFiles, parseReviewThreads([reviewThreads])),
+  drafts: {},
 } satisfies ReviewResult;
 
 function renderTab(...results: ReviewResult[]) {
@@ -276,5 +277,61 @@ describe("Review tab threads", () => {
 
     await slot.findByText("2 open");
     expect(slot.queryByRole("region", { name: "Outdated" })).toBeNull();
+  });
+});
+
+describe("Review tab drafts", () => {
+  const PLACED = "PRRT_kwDOHI7l-86jxula";
+  const OUTDATED = "PRRT_kwDOHI7l-86jx0SN";
+  const draft = { body: "Renamed in abc123", updatedAt: 1, source: "agent" as const };
+
+  function withDraft(reviewThreadId: string): ReviewResult {
+    return { ...threaded, drafts: { [reviewThreadId]: draft } };
+  }
+
+  it("shows a draft below the comments of its thread as 'Draft from agent'", async () => {
+    const slot = renderTab(withDraft(PLACED));
+
+    const section = await slot.findByRole("region", { name: "Draft from agent" });
+    expect(section.textContent).toContain("Renamed in abc123");
+    const card = section.closest("article")!;
+    expect(card.textContent).toContain("There's no wait for the new row to mount");
+    expect(card.lastElementChild).toBe(section);
+  });
+
+  it("shows the draft of an outdated thread", async () => {
+    const slot = renderTab(withDraft(OUTDATED));
+
+    const outdated = within(await slot.findByRole("region", { name: "Outdated" }));
+    expect(outdated.getByRole("region", { name: "Draft from agent" }).textContent).toContain(
+      "Renamed in abc123",
+    );
+  });
+
+  it("shows the draft text as written, not as Markdown", async () => {
+    const slot = renderTab({ ...threaded, drafts: { [PLACED]: { ...draft, body: "**bold**\nnext" } } });
+
+    const section = await slot.findByRole("region", { name: "Draft from agent" });
+    expect(within(section).queryByTestId("bb-markdown")).toBeNull();
+    expect(section.textContent).toContain("**bold**\nnext");
+  });
+
+  it("shows a draft saved while the tab is open", async () => {
+    const slot = renderTab(threaded, withDraft(PLACED));
+    await slot.findByText("3 open");
+
+    await slot.behavior.emitRealtime("review.updated", { threadId: "thr_1" });
+
+    const section = await slot.findByRole("region", { name: "Draft from agent" });
+    expect(section.textContent).toContain("Renamed in abc123");
+  });
+
+  it("ignores a review update of another thread", async () => {
+    const slot = renderTab(threaded, withDraft(PLACED));
+    await slot.findByText("3 open");
+
+    await slot.behavior.emitRealtime("review.updated", { threadId: "thr_2" });
+
+    expect(slot.inspection.rpcCalls.map((call) => call.method)).toEqual(["getReview"]);
   });
 });
