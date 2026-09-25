@@ -26,7 +26,7 @@ import {
   PropertiesRail,
   type TaskPropertyUpdate,
 } from "./rail.js";
-import { useBlockedWorkConfirm } from "../dependencies.js";
+import { DependencyBadges, useBlockedWorkConfirm } from "../dependencies.js";
 import { DependencySections } from "./dependencies.js";
 import { ThreadsSection } from "./threads.js";
 import { DetailToasts, useDetailToasts } from "./toast.js";
@@ -144,7 +144,8 @@ function SubTasksSection({
           <span className="shrink-0 text-xs text-muted-foreground">
             {subtask.key}
           </span>
-          <span className="min-w-0 truncate">{subtask.title}</span>
+          <span className="min-w-0 flex-1 truncate">{subtask.title}</span>
+          <DependencyBadges task={subtask} className="py-px text-xs" />
         </button>
       ))}
       {adding ? (
