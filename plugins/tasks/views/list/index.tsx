@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { Label } from "../../shared/contract.js";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import type { Label, Task } from "../../shared/contract.js";
 import { useProjects } from "../../shell/data.js";
 import { useTasksNavigation } from "../../shell/routes.js";
 import { NewTaskDialog } from "../manage/new-task-dialog.js";
@@ -22,7 +22,6 @@ import {
   storeListPreference,
   type ListPreference,
 } from "./list-preference.js";
-import { sortTasks } from "../../shared/sort.js";
 import type { TaskSort } from "../../shared/pagination.js";
 import { StatusIcon } from "./icons.js";
 import {
@@ -30,13 +29,15 @@ import {
   useListScrollRestoration,
 } from "./scroll-restoration.js";
 import {
-  groupTasksByStatus,
+  buildListTree,
+  groupListTree,
   labelFilterOptions,
   selectedLabelIds,
   STATUS_LABELS,
 } from "./lib.js";
 import { editedTasks, matchesFilters } from "./optimistic.js";
 import { useListTaskEdits } from "./use-task-edits.js";
+import { useExpandedTasks } from "./expanded-tasks.js";
 import { TaskRow } from "./row.js";
 import type { EditFn } from "./property-menus.js";
 import { useBlockedWorkConfirm } from "../dependencies.js";
@@ -114,14 +115,24 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
     return selectedLabelIds(labelOptions, filters.labelNames);
   }, [filters.labelNames, labelOptions, labels.data]);
 
-  const tasksQuery = useListTasks(projectId, activeOnly, {
+  const {
+    matches: tasksQuery,
+    scope: scopeQuery,
+    needsScope,
+  } = useListTasks(projectId, activeOnly, {
     statuses: filters.statuses,
     priorities: filters.priorities,
     labelIds,
     dependency: filters.dependency,
   });
-  const meta = useTaskListMeta(tasksQuery.data);
-  const edits = useListTaskEdits(tasksQuery.data, (message) => push(message));
+  const scopeTasks = needsScope
+    ? (scopeQuery.data ?? undefined)
+    : tasksQuery.data;
+  const serverTasks = useMemo(
+    () => mergeTasks(tasksQuery.data, scopeTasks),
+    [tasksQuery.data, scopeTasks],
+  );
+  const edits = useListTaskEdits(serverTasks, (message) => push(message));
   const { confirmBlockedWork, blockedWorkDialog } = useBlockedWorkConfirm();
   const edit: EditFn = (task, patch) => {
     if (patch.status !== "in_progress" || task.status === "in_progress") {
@@ -169,13 +180,43 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
     filters.priorities,
     labelIds,
   ]);
-  const groups = useMemo(
-    () => groupTasksByStatus(sortTasks(displayTasks ?? [], sort)),
-    [displayTasks, sort],
+  const displayScope = useMemo(
+    () =>
+      scopeTasks === undefined
+        ? undefined
+        : editedTasks(scopeTasks, edits.entries),
+    [scopeTasks, edits.entries],
   );
 
   const showProject = projectId === null;
   const filtered = hasActiveFilters(filters);
+  const treeFiltered = filtered || activeOnly;
+
+  const tree = useMemo(
+    () =>
+      displayTasks === undefined || displayScope === undefined
+        ? undefined
+        : buildListTree(displayTasks, displayScope, treeFiltered),
+    [displayTasks, displayScope, treeFiltered],
+  );
+  const groups = useMemo(() => groupListTree(tree ?? [], sort), [tree, sort]);
+  const knownParentIds = useMemo(
+    () => new Set((tree ?? []).map((entry) => entry.task.id)),
+    [tree],
+  );
+  const expanded = useExpandedTasks(
+    preferenceScope,
+    treeFiltered ? JSON.stringify(filters) : null,
+    knownParentIds,
+  );
+  const visibleTasks = groups.flatMap((group) =>
+    group.entries.flatMap((entry) =>
+      expanded.isExpanded(entry)
+        ? [entry.task, ...entry.children]
+        : [entry.task],
+    ),
+  );
+  const meta = useTaskListMeta(tree === undefined ? undefined : visibleTasks);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const scopeKey = listScrollScopeKey({ projectId, activeOnly, filters, sort });
@@ -196,28 +237,51 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
     }
   }, [routeScope, tasksQuery.isLoading, tasksQuery.data]);
   useListScrollRestoration(scrollRef, scopeKey, {
-    contentReady: tasksQuery.data !== undefined && tasksQuery.data.length > 0,
+    contentReady: tree !== undefined && visibleTasks.length > 0,
     loading: tasksQuery.isLoading || scopeChanged,
-    revision: tasksQuery.data?.length ?? 0,
+    revision: visibleTasks.length,
   });
+
+  const loadError = tasksQuery.error ?? (needsScope ? scopeQuery.error : null);
+  const renderRow = (
+    task: Task,
+    extra: Pick<
+      React.ComponentProps<typeof TaskRow>,
+      "depth" | "dimmed" | "expanded" | "onToggleExpanded" | "subProgress"
+    >,
+  ) => (
+    <TaskRow
+      key={task.id}
+      task={task}
+      meta={meta.data?.get(task.id)}
+      project={projectsById.get(task.projectId)}
+      showProject={showProject}
+      labelsById={labelsById}
+      projectLabels={labelsByProject.get(task.projectId) ?? []}
+      onEdit={edit}
+      onOpen={() => navigation.go({ kind: "task", taskKey: task.key })}
+      pending={edits.pending.has(task.id)}
+      {...extra}
+    />
+  );
 
   let body: React.ReactNode;
   if (
     routeScopeChanged ||
     tasksQuery.data === undefined ||
-    displayTasks === undefined
+    tree === undefined
   ) {
     body =
-      !routeScopeChanged && tasksQuery.error !== null ? (
+      !routeScopeChanged && loadError !== null ? (
         <EmptyState
           icon="AlertCircle"
           title="Couldn't load tasks"
-          description={tasksQuery.error}
+          description={loadError}
         />
       ) : (
         <LoadingRows />
       );
-  } else if (displayTasks.length === 0) {
+  } else if (tree.length === 0) {
     if (filtered) {
       body = (
         <EmptyState
@@ -267,23 +331,27 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
           <StatusIcon status={group.status} />
           {STATUS_LABELS[group.status]}
           <span className="text-xs font-normal tabular-nums text-subtle-foreground">
-            {group.tasks.length}
+            {group.entries.length}
           </span>
         </div>
-        {group.tasks.map((task) => (
-          <TaskRow
-            key={task.id}
-            task={task}
-            meta={meta.data?.get(task.id)}
-            project={projectsById.get(task.projectId)}
-            showProject={showProject}
-            labelsById={labelsById}
-            projectLabels={labelsByProject.get(task.projectId) ?? []}
-            onEdit={edit}
-            onOpen={() => navigation.go({ kind: "task", taskKey: task.key })}
-            pending={edits.pending.has(task.id)}
-          />
-        ))}
+        {group.entries.map((entry) => {
+          const isExpanded = expanded.isExpanded(entry);
+          return (
+            <Fragment key={entry.task.id}>
+              {renderRow(entry.task, {
+                dimmed: entry.dimmed,
+                expanded: isExpanded,
+                ...(entry.children.length > 0
+                  ? { onToggleExpanded: () => expanded.toggle(entry) }
+                  : {}),
+                subProgress: { done: entry.subDone, total: entry.subTotal },
+              })}
+              {isExpanded
+                ? entry.children.map((child) => renderRow(child, { depth: 1 }))
+                : null}
+            </Fragment>
+          );
+        })}
       </section>
     ));
   }
@@ -313,4 +381,15 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
       {blockedWorkDialog}
     </div>
   );
+}
+
+function mergeTasks(
+  matches: readonly Task[] | undefined,
+  scope: readonly Task[] | undefined,
+): readonly Task[] | undefined {
+  if (matches === undefined || scope === undefined) return matches;
+  if (matches === scope) return matches;
+  const byId = new Map(scope.map((task) => [task.id, task]));
+  for (const task of matches) byId.set(task.id, task);
+  return [...byId.values()];
 }

@@ -6,6 +6,7 @@ import {
   type TaskStatus,
 } from "../../shared/contract.js";
 import type { TaskSort } from "../../shared/pagination.js";
+import { sortTasks } from "../../shared/sort.js";
 
 export const STATUS_LABELS: Record<TaskStatus, string> = {
   backlog: "Backlog",
@@ -46,6 +47,99 @@ export function groupTasksByStatus(tasks: readonly Task[]): StatusGroup[] {
     const bucket = byStatus.get(status);
     return bucket ? [{ status, tasks: bucket }] : [];
   });
+}
+
+export interface ListTreeEntry {
+  task: Task;
+  dimmed: boolean;
+  children: Task[];
+  subDone: number;
+  subTotal: number;
+  autoExpand: boolean;
+}
+
+export function buildListTree(
+  matches: readonly Task[],
+  scope: readonly Task[],
+  filtered: boolean,
+): ListTreeEntry[] {
+  const scopeById = new Map(scope.map((task) => [task.id, task]));
+  const progress = new Map<string, { done: number; total: number }>();
+  for (const task of scope) {
+    if (task.parentTaskId === null) continue;
+    const entry = progress.get(task.parentTaskId) ?? { done: 0, total: 0 };
+    entry.total += 1;
+    if (task.status === "done") entry.done += 1;
+    progress.set(task.parentTaskId, entry);
+  }
+
+  const matchedTopLevel = new Map<string, Task>();
+  const childrenByParent = new Map<string, Task[]>();
+  for (const task of matches) {
+    const parentId = task.parentTaskId;
+    if (parentId === null || !scopeById.has(parentId)) {
+      matchedTopLevel.set(task.id, task);
+      continue;
+    }
+    const bucket = childrenByParent.get(parentId);
+    if (bucket) bucket.push(task);
+    else childrenByParent.set(parentId, [task]);
+  }
+
+  const toEntry = (task: Task, dimmed: boolean): ListTreeEntry => {
+    const children = childrenByParent.get(task.id) ?? [];
+    return {
+      task,
+      dimmed,
+      children,
+      subDone: progress.get(task.id)?.done ?? 0,
+      subTotal: progress.get(task.id)?.total ?? 0,
+      autoExpand: filtered && children.length > 0,
+    };
+  };
+
+  const entries: ListTreeEntry[] = [];
+  const placed = new Set<string>();
+  for (const task of scope) {
+    const matched = matchedTopLevel.get(task.id);
+    if (matched !== undefined) {
+      entries.push(toEntry(matched, false));
+      placed.add(task.id);
+    } else if (childrenByParent.has(task.id)) {
+      entries.push(toEntry(task, true));
+      placed.add(task.id);
+    }
+  }
+  for (const task of matchedTopLevel.values()) {
+    if (!placed.has(task.id)) entries.push(toEntry(task, false));
+  }
+  return entries;
+}
+
+interface ListTreeGroup {
+  status: TaskStatus;
+  entries: ListTreeEntry[];
+}
+
+export function groupListTree(
+  entries: readonly ListTreeEntry[],
+  sort: TaskSort,
+): ListTreeGroup[] {
+  const byId = new Map(entries.map((entry) => [entry.task.id, entry]));
+  return groupTasksByStatus(
+    sortTasks(
+      entries.map((entry) => entry.task),
+      sort,
+    ),
+  ).map((group) => ({
+    status: group.status,
+    entries: group.tasks.flatMap((task) => {
+      const entry = byId.get(task.id);
+      return entry
+        ? [{ ...entry, children: sortTasks(entry.children, sort) }]
+        : [];
+    }),
+  }));
 }
 
 export interface LabelFilterOption {
