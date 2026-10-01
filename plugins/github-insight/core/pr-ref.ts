@@ -19,3 +19,7 @@ export function parsePullRequestUrl(url: string): PullRequestRef | null {
   const [, owner, repo, number] = match;
   return { owner: owner!, repo: repo!, number: Number(number) };
 }
+
+export function pullRequestUrl({ owner, repo, number }: PullRequestRef): string {
+  return `https://github.com/${owner}/${repo}/pull/${number}`;
+}
