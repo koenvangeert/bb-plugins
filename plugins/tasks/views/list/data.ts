@@ -15,12 +15,26 @@ interface ListTaskFilters {
   dependency?: "ready" | "blocked";
 }
 
+export function listNeedsScope(
+  activeOnly: boolean,
+  filters: ListTaskFilters,
+): boolean {
+  return (
+    activeOnly ||
+    filters.statuses.length > 0 ||
+    filters.priorities.length > 0 ||
+    filters.labelIds !== null ||
+    filters.dependency !== undefined
+  );
+}
+
 export function useListTasks(
   projectId: string | null,
   activeOnly: boolean,
   filters: ListTaskFilters,
 ) {
-  return useTasksQuery(
+  const needsScope = listNeedsScope(activeOnly, filters);
+  const matches = useTasksQuery(
     async (rpc) =>
       listAllTasks(rpc, {
         ...(projectId === null ? {} : { projectId }),
@@ -37,7 +51,6 @@ export function useListTasks(
           ? { dependency: filters.dependency }
           : {}),
         activeOnly,
-        parentTaskId: null,
       }),
     ["tasks:changed", "threads:changed"],
     [
@@ -49,6 +62,15 @@ export function useListTasks(
       filters.dependency ?? "",
     ],
   );
+  const scope = useTasksQuery<Task[] | null>(
+    async (rpc) =>
+      needsScope
+        ? listAllTasks(rpc, projectId === null ? {} : { projectId })
+        : null,
+    ["tasks:changed", "threads:changed"],
+    [projectId, needsScope],
+  );
+  return { matches, scope, needsScope };
 }
 
 export function useLabels(projectIds: readonly string[]) {

@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { Label, Task } from "../../shared/contract.js";
 import {
   activeWorkLabel,
+  buildListTree,
   formatDueDate,
+  groupListTree,
   groupTasksByStatus,
   labelFilterOptions,
   partitionLabels,
@@ -36,6 +38,94 @@ describe("groupTasksByStatus", () => {
 
   it("returns nothing for no tasks", () => {
     expect(groupTasksByStatus([])).toEqual([]);
+  });
+});
+
+describe("buildListTree", () => {
+  const parent = task({ id: "P1", status: "todo" });
+  const doneChild = task({ id: "C1", status: "done", parentTaskId: "P1" });
+  const openChild = task({ id: "C2", status: "todo", parentTaskId: "P1" });
+  const blockedChild = task({ id: "C3", status: "todo", parentTaskId: "P1" });
+  const other = task({ id: "P2", status: "todo" });
+  const scope = [parent, doneChild, openChild, blockedChild, other];
+
+  it("nests every subtask under its parent without a filter", () => {
+    const tree = buildListTree(scope, scope, false);
+    expect(tree.map((entry) => entry.task.id)).toEqual(["P1", "P2"]);
+    expect(tree[0]).toMatchObject({
+      dimmed: false,
+      autoExpand: false,
+      subDone: 1,
+      subTotal: 3,
+    });
+    expect(tree[0]?.children.map((child) => child.id)).toEqual([
+      "C1",
+      "C2",
+      "C3",
+    ]);
+    expect(tree[1]).toMatchObject({ children: [], subDone: 0, subTotal: 0 });
+  });
+
+  it("shows a dimmed, auto-expanded parent when only a subtask matches", () => {
+    const tree = buildListTree([blockedChild], scope, true);
+    expect(tree).toHaveLength(1);
+    expect(tree[0]).toMatchObject({
+      task: parent,
+      dimmed: true,
+      autoExpand: true,
+      subDone: 1,
+      subTotal: 3,
+    });
+    expect(tree[0]?.children).toEqual([blockedChild]);
+  });
+
+  it("shows a matching parent without its non-matching subtasks", () => {
+    const tree = buildListTree([parent], scope, true);
+    expect(tree).toHaveLength(1);
+    expect(tree[0]).toMatchObject({
+      dimmed: false,
+      autoExpand: false,
+      children: [],
+      subDone: 1,
+      subTotal: 3,
+    });
+  });
+
+  it("shows nothing when neither parent nor subtasks match", () => {
+    expect(buildListTree([], scope, true)).toEqual([]);
+  });
+
+  it("keeps a subtask whose parent is missing from scope as a top-level row", () => {
+    const tree = buildListTree([blockedChild], [blockedChild], true);
+    expect(tree.map((entry) => entry.task.id)).toEqual(["C3"]);
+  });
+});
+
+describe("groupListTree", () => {
+  it("keeps a done subtask under its in-progress parent in priority order", () => {
+    const parent = task({ id: "P1", status: "in_progress" });
+    const low = task({
+      id: "C1",
+      status: "done",
+      priority: "low",
+      parentTaskId: "P1",
+    });
+    const urgent = task({
+      id: "C2",
+      status: "todo",
+      priority: "urgent",
+      parentTaskId: "P1",
+    });
+    const scope = [parent, low, urgent];
+    const groups = groupListTree(
+      buildListTree(scope, scope, false),
+      "priority",
+    );
+    expect(groups.map((group) => group.status)).toEqual(["in_progress"]);
+    expect(groups[0]?.entries[0]?.children.map((child) => child.id)).toEqual([
+      "C2",
+      "C1",
+    ]);
   });
 });
 

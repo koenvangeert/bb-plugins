@@ -103,6 +103,11 @@ interface TaskRowProps {
   onEdit: EditFn;
   onOpen: () => void;
   pending: boolean;
+  depth?: 0 | 1;
+  dimmed?: boolean;
+  expanded?: boolean;
+  onToggleExpanded?: () => void;
+  subProgress?: { done: number; total: number };
 }
 
 export function TaskRow({
@@ -115,6 +120,11 @@ export function TaskRow({
   onEdit,
   onOpen,
   pending,
+  depth = 0,
+  dimmed = false,
+  expanded = false,
+  onToggleExpanded,
+  subProgress,
 }: TaskRowProps) {
   const [openMenu, setOpenMenu] = useState<"status" | "priority" | null>(null);
 
@@ -122,10 +132,13 @@ export function TaskRow({
     <TaskContextMenu task={task} onEdit={onEdit} projectLabels={projectLabels}>
       <div
         data-task-key={task.key}
+        data-dimmed={dimmed || undefined}
         aria-busy={pending || undefined}
         className={cn(
           "relative grid w-full grid-cols-[auto_auto_minmax(0,1fr)] items-center gap-x-2 gap-y-1 border-b border-border-hairline px-3.5 py-1.5 text-left transition-opacity hover:bg-state-hover",
           "@md:flex @md:h-[34px] @md:py-0",
+          depth === 1 && "pl-9",
+          dimmed && "opacity-50",
           pending && "opacity-70",
         )}
       >
@@ -146,6 +159,26 @@ export function TaskRow({
           }}
           className="absolute inset-0 rounded-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
         />
+        {onToggleExpanded !== undefined ? (
+          <button
+            type="button"
+            aria-expanded={expanded}
+            aria-label={`${expanded ? "Collapse" : "Expand"} subtasks of ${task.key}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleExpanded();
+            }}
+            className="absolute left-0.5 top-1/2 z-10 flex size-3.5 -translate-y-1/2 items-center justify-center rounded-sm text-subtle-foreground hover:bg-state-active hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            <Icon
+              name="ChevronRight"
+              className={cn(
+                "size-3 transition-transform",
+                expanded && "rotate-90",
+              )}
+            />
+          </button>
+        ) : null}
         <PriorityEditor
           task={task}
           onEdit={onEdit}
@@ -167,6 +200,15 @@ export function TaskRow({
           {task.title}
         </span>
         <span className="col-start-3 row-start-2 flex min-w-0 items-center gap-1.5 justify-self-end text-xs text-subtle-foreground @max-md:overflow-hidden @md:shrink-0">
+          {subProgress !== undefined && subProgress.total > 0 ? (
+            <span
+              title="Subtasks done"
+              className={`${RAIL_CHIP_CLASS} shrink-0 tabular-nums`}
+            >
+              <Icon name="GitBranch" className="size-3 shrink-0" />
+              {subProgress.done}/{subProgress.total}
+            </span>
+          ) : null}
           <DependencyBadges task={task} className="py-px text-xs" />
           {meta ? <ActiveChip threads={meta.activeThreads} /> : null}
           <LabelChips task={task} labelsById={labelsById} />
