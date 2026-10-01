@@ -65,3 +65,20 @@ export function openThreadCounts(placement: ThreadPlacement): { open: number; ou
   const placed = placement.placed.filter(({ thread }) => !thread.resolved).length;
   return { open: placed + outdated, outdated };
 }
+
+export interface OpenThread {
+  thread: ReviewThread;
+  line: number | null;
+  outdated: boolean;
+}
+
+export function openThreads(placement: ThreadPlacement): OpenThread[] {
+  return [
+    ...placement.placed
+      .filter(({ thread }) => !thread.resolved)
+      .map(({ thread, lineNumber }) => ({ thread, line: lineNumber, outdated: false })),
+    ...placement.outdated
+      .filter((thread) => !thread.resolved)
+      .map((thread) => ({ thread, line: thread.originalLine, outdated: true })),
+  ];
+}

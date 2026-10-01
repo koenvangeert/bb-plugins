@@ -3,12 +3,14 @@ import { Markdown } from "@get-bb/plugin-sdk/app";
 import { Icon } from "@/components/ui/icon";
 import type { Draft } from "../core/drafts";
 import type { ReviewComment, ReviewThread } from "../core/review-threads";
+import { useThreadSelection } from "./thread-selection";
 
 export function ReviewThreadCard({ thread, draft }: { thread: ReviewThread; draft: Draft | undefined }) {
   const [expanded, setExpanded] = useState(false);
   const firstAuthor = thread.comments[0]?.author;
   return (
     <article className="my-1 flex flex-col rounded-md border border-border bg-background font-sans text-sm">
+      {!thread.resolved && <SelectForAgent reviewThreadId={thread.id} />}
       {thread.resolved && (
         <button
           type="button"
@@ -31,6 +33,20 @@ export function ReviewThreadCard({ thread, draft }: { thread: ReviewThread; draf
         </>
       )}
     </article>
+  );
+}
+
+function SelectForAgent({ reviewThreadId }: { reviewThreadId: string }) {
+  const selection = useThreadSelection();
+  return (
+    <label className="flex items-center gap-1.5 px-3 py-1 text-xs text-muted-foreground">
+      <input
+        type="checkbox"
+        checked={selection.isSelected(reviewThreadId)}
+        onChange={() => selection.toggle(reviewThreadId)}
+      />
+      Select for agent
+    </label>
   );
 }
 

@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, within } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginThreadPanelProps } from "@get-bb/plugin-sdk/app";
 import type { ReactNode } from "react";
 import type { DiffLineAnnotation, FileDiffMetadata } from "@pierre/diffs";
-import type { ReviewResult, rpcContract } from "../contract";
+import type { ReviewResult, rpcContract, SendToAgentResult } from "../contract";
 import { parsePrFiles } from "../core/pr-files";
 import { parseReviewThreads } from "../core/review-threads";
 import { placeThreads, type ThreadPlacement } from "../core/thread-placement";
@@ -70,6 +70,10 @@ const threaded = {
 } satisfies ReviewResult;
 
 function renderTab(...results: ReviewResult[]) {
+  return renderTabSending(() => ({ kind: "sent", delivery: "sent", threadCount: 1 }), ...results);
+}
+
+function renderTabSending(sendToAgent: () => SendToAgentResult | Promise<SendToAgentResult>, ...results: ReviewResult[]) {
   let call = 0;
   const getReview = () => results[Math.min(call++, results.length - 1)]!;
   return renderSlot<PluginThreadPanelProps, typeof rpcContract>(
@@ -78,6 +82,7 @@ function renderTab(...results: ReviewResult[]) {
     {
       rpc: {
         getReview,
+        sendToAgent,
         getInsight: () => ({ kind: "no_pr" }),
         refresh: () => ({ kind: "no_pr" }),
       },
@@ -333,5 +338,149 @@ describe("Review tab drafts", () => {
     await slot.behavior.emitRealtime("review.updated", { threadId: "thr_2" });
 
     expect(slot.inspection.rpcCalls.map((call) => call.method)).toEqual(["getReview"]);
+  });
+});
+
+describe("Review tab send to agent", () => {
+  const PLACED = "PRRT_kwDOHI7l-86jxula";
+  const OUTDATED = "PRRT_kwDOHI7l-86jx0SN";
+  const PLACED_TEXT = "There's no wait for the new row to mount";
+
+  function checkboxOf(slot: ReturnType<typeof renderTab>, text: string) {
+    const card = slot.getAllByRole("article").find((article) => article.textContent?.includes(text))!;
+    return within(card).getByRole("checkbox", { name: "Select for agent" }) as HTMLInputElement;
+  }
+
+  function outdatedCheckbox(slot: ReturnType<typeof renderTab>) {
+    return within(slot.getByRole("region", { name: "Outdated" })).getByRole("checkbox", {
+      name: "Select for agent",
+    }) as HTMLInputElement;
+  }
+
+  async function selectTwo(slot: ReturnType<typeof renderTab>) {
+    await slot.findAllByTestId("line-annotation");
+    fireEvent.click(checkboxOf(slot, PLACED_TEXT));
+    fireEvent.click(outdatedCheckbox(slot));
+  }
+
+  function sendCalls(slot: ReturnType<typeof renderTab>) {
+    return slot.inspection.rpcCalls.filter((call) => call.method === "sendToAgent");
+  }
+
+  it("has a checkbox on each open thread and a disabled 'Send 0 to agent'", async () => {
+    const slot = renderTab(threaded);
+
+    await slot.findAllByTestId("line-annotation");
+    expect(slot.getAllByRole("checkbox", { name: "Select for agent" })).toHaveLength(3);
+    expect((slot.getByRole("button", { name: "Send 0 to agent" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("counts the selected threads", async () => {
+    const slot = renderTab(threaded);
+
+    await selectTwo(slot);
+    expect((slot.getByRole("button", { name: "Send 2 to agent" }) as HTMLButtonElement).disabled).toBe(false);
+
+    fireEvent.click(outdatedCheckbox(slot));
+    expect(slot.getByRole("button", { name: "Send 1 to agent" })).toBeTruthy();
+  });
+
+  it("has no checkbox on a resolved thread", async () => {
+    const slot = renderTab(threaded);
+
+    fireEvent.click(await slot.findByRole("checkbox", { name: "Show resolved" }));
+    const resolved = within(slot.getByRole("region", { name: "Outdated" })).getByRole("button", {
+      name: /wiz-22f56a2082.*Resolved/,
+    });
+    fireEvent.click(resolved);
+
+    expect(within(resolved.closest("article")!).queryByRole("checkbox")).toBeNull();
+    expect(slot.getAllByRole("checkbox", { name: "Select for agent" })).toHaveLength(3);
+  });
+
+  it("sends the selected threads of its own thread, then clears the selection", async () => {
+    const slot = renderTabSending(() => ({ kind: "sent", delivery: "sent", threadCount: 2 }), threaded);
+    await selectTwo(slot);
+
+    fireEvent.click(slot.getByRole("button", { name: "Send 2 to agent" }));
+
+    expect(await slot.findByRole("button", { name: "Send 0 to agent" })).toBeTruthy();
+    expect(sendCalls(slot)).toEqual([
+      expect.objectContaining({ input: { threadId: "thr_1", reviewThreadIds: [PLACED, OUTDATED] } }),
+    ]);
+    expect(checkboxOf(slot, PLACED_TEXT).checked).toBe(false);
+    expect(slot.getByText("Sent to agent")).toBeTruthy();
+  });
+
+  it("says when the message waits for a busy agent", async () => {
+    const slot = renderTabSending(() => ({ kind: "sent", delivery: "queued", threadCount: 2 }), threaded);
+    await selectTwo(slot);
+
+    fireEvent.click(slot.getByRole("button", { name: "Send 2 to agent" }));
+
+    expect(await slot.findByText("Queued until the agent is idle")).toBeTruthy();
+  });
+
+  it("says how many threads were sent when some got resolved in the meantime", async () => {
+    const slot = renderTabSending(() => ({ kind: "sent", delivery: "sent", threadCount: 1 }), threaded);
+    await selectTwo(slot);
+
+    fireEvent.click(slot.getByRole("button", { name: "Send 2 to agent" }));
+
+    expect(await slot.findByText("Sent 1 of 2 to agent")).toBeTruthy();
+  });
+
+  it("keeps a thread selected during the send, which was not sent", async () => {
+    let finish: (result: SendToAgentResult) => void = () => {};
+    const slot = renderTabSending(() => new Promise((resolve) => (finish = resolve)), threaded);
+    await slot.findAllByTestId("line-annotation");
+    fireEvent.click(checkboxOf(slot, PLACED_TEXT));
+
+    fireEvent.click(slot.getByRole("button", { name: "Send 1 to agent" }));
+    fireEvent.click(outdatedCheckbox(slot));
+    await act(async () => finish({ kind: "sent", delivery: "sent", threadCount: 1 }));
+
+    expect(outdatedCheckbox(slot).checked).toBe(true);
+    expect(checkboxOf(slot, PLACED_TEXT).checked).toBe(false);
+  });
+
+  it("shows the error and keeps the selection when the send fails", async () => {
+    const slot = renderTabSending(() => ({ kind: "error", message: "gh not logged in" }), threaded);
+    await selectTwo(slot);
+
+    fireEvent.click(slot.getByRole("button", { name: "Send 2 to agent" }));
+
+    const alert = await slot.findByRole("alert");
+    expect(alert.textContent).toContain("gh not logged in");
+    expect(slot.getByRole("button", { name: "Send 2 to agent" })).toBeTruthy();
+    expect(checkboxOf(slot, PLACED_TEXT).checked).toBe(true);
+  });
+
+  it("shows the error and keeps the selection when the call throws", async () => {
+    const slot = renderTabSending(() => {
+      throw new Error("Thread is archived");
+    }, threaded);
+    await selectTwo(slot);
+
+    fireEvent.click(slot.getByRole("button", { name: "Send 2 to agent" }));
+
+    expect((await slot.findByRole("alert")).textContent).toContain("Thread is archived");
+    expect(slot.getByRole("button", { name: "Send 2 to agent" })).toBeTruthy();
+  });
+
+  it("stops counting a selected thread that got resolved", async () => {
+    const resolved = {
+      ...threaded,
+      threads: {
+        ...threaded.threads,
+        outdated: threaded.threads.outdated.map((thread) => ({ ...thread, resolved: true })),
+      },
+    };
+    const slot = renderTab(threaded, resolved);
+    await selectTwo(slot);
+
+    await slot.behavior.emitRealtime("review.updated", { threadId: "thr_1" });
+
+    expect(await slot.findByRole("button", { name: "Send 1 to agent" })).toBeTruthy();
   });
 });

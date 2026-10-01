@@ -17,6 +17,20 @@ export function RefreshButton({ refreshing, refresh }: { refreshing: boolean; re
   );
 }
 
+interface SendToAgentButtonProps {
+  count: number;
+  sending: boolean;
+  send: () => void;
+}
+
+export function SendToAgentButton({ count, sending, send }: SendToAgentButtonProps) {
+  return (
+    <button type="button" className={BUTTON_CLASS} onClick={send} disabled={count === 0 || sending}>
+      Send {count} to agent
+    </button>
+  );
+}
+
 interface RefreshErrorProps {
   message: string;
   refreshedAt: number | null;

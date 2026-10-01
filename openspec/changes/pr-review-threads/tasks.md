@@ -9,7 +9,7 @@
 - [x] 2.2 Implement `parsePrFiles` (path, status, patch or null) and verify tests: a normal file, a renamed file, and a file without a patch
 - [x] 2.3 Implement `parseReviewThreads` (id, resolved, outdated, path, line, originalLine, side, comments with author, time, body, url, diffHunk) and verify tests on the fixture for all 4 cases
 - [x] 2.4 Implement `placeThreads(files, threads)` that splits threads into placed (file, side, line) and outdated; verify tests: RIGHT maps to `additions`, LEFT to `deletions`, `isOutdated`, null line, line outside the hunks, and file not in the PR
-- [ ] 2.5 Implement `buildAgentPrompt(threads)` and verify a snapshot test: it holds each thread id, path, line, snippet, and comments, and the three rules (fix code, save draft with the CLI command, do not post or resolve)
+- [x] 2.5 Implement `buildAgentPrompt(threads)` and verify a snapshot test: it holds each thread id, path, line, snippet, and comments, and the three rules (fix code, save draft with the CLI command, do not post or resolve)
 
 ## 3. GitHub access (host)
 
@@ -38,7 +38,7 @@
 - [ ] 6.2 Render the file list with one diff per file (D4, or the fallback from spike 1.1), "Diff not available" for files without a patch, and lazy rendering for files out of view; verify with a `renderSlot` test on the fixture
 - [ ] 6.3 Build the thread component: comments with author, time, and Markdown body; collapsed resolved threads; reply box with "Post" and "Post + resolve"; "Resolve" and "Unresolve"; errors keep the reply text; verify with `renderSlot` tests for each action and for a failed post
 - [ ] 6.4 Build the "Outdated" section with path, original line, and the `diffHunk` snippet; verify with a `renderSlot` test on the fixture's outdated thread
-- [ ] 6.5 Add the checkboxes and "Send N to agent" (disabled at 0, clears after success, keeps selection on error); verify with `renderSlot` tests
+- [x] 6.5 Add the checkboxes and "Send N to agent" (disabled at 0, clears after success, keeps selection on error); verify with `renderSlot` tests
 - [ ] 6.6 Show the draft as "Draft from agent" with an editable text, "Post", "Post + resolve", and "Discard"; save edits to the draft (debounced); refetch on `review.updated`; verify with `renderSlot` tests and in the running app that a draft saved from the CLI shows without a refresh
 
 ## 7. End-to-end check

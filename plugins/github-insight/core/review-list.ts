@@ -1,8 +1,6 @@
 import type { Drafts } from "./drafts";
-import type { ReviewThread } from "./review-threads";
-import type { ThreadPlacement } from "./thread-placement";
-
-export const MAX_LISTED_BODY_CHARS = 4000;
+import { capCommentBody } from "./review-threads";
+import { openThreads, type ThreadPlacement } from "./thread-placement";
 
 export interface ReviewListComment {
   author: string;
@@ -25,7 +23,7 @@ export function reviewListEntries(
   placement: ThreadPlacement,
   drafts: Drafts,
 ): ReviewListEntry[] {
-  const entry = (thread: ReviewThread, line: number | null, outdated: boolean): ReviewListEntry => ({
+  return openThreads(placement).map(({ thread, line, outdated }) => ({
     id: thread.id,
     path: thread.path,
     line,
@@ -35,23 +33,10 @@ export function reviewListEntries(
     comments: thread.comments.map(({ author, createdAt, body, url }) => ({
       author,
       createdAt,
-      body: capBody(body),
+      body: capCommentBody(body),
       url,
     })),
-  });
-  return [
-    ...placement.placed
-      .filter(({ thread }) => !thread.resolved)
-      .map(({ thread, lineNumber }) => entry(thread, lineNumber, false)),
-    ...placement.outdated
-      .filter((thread) => !thread.resolved)
-      .map((thread) => entry(thread, thread.originalLine, true)),
-  ];
-}
-
-function capBody(body: string): string {
-  if (body.length <= MAX_LISTED_BODY_CHARS) return body;
-  return `${body.slice(0, MAX_LISTED_BODY_CHARS)}\n[cut at ${MAX_LISTED_BODY_CHARS} characters]`;
+  }));
 }
 
 export function formatReviewList(entries: readonly ReviewListEntry[]): string {

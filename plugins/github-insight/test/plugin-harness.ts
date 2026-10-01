@@ -80,6 +80,7 @@ export async function setup(options: {
             ({ id }) => threadResponse(id) as unknown as ThreadListItem,
           ),
         updatePluginMetadata: async () => ({}),
+        send: async () => ({ ok: true as const, delivery: "sent" as const }),
       },
       environments: {
         pullRequest: async ({ environmentId }) =>
