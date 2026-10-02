@@ -1,4 +1,5 @@
 import { inTransaction, type SqlDatabase } from './database'
+import type { Filter, FilterValue } from './filterFields'
 import type { Ticket } from './tickets'
 
 export const FIRST_TAB = { name: 'My tickets', jql: 'assignee = currentUser() AND statusCategory != Done' }
@@ -14,6 +15,12 @@ export interface Tab {
   id: number
   name: string
   jql: string
+  filters: Filter[]
+}
+
+export interface TabValues {
+  fieldValues: Record<string, FilterValue[]>
+  valuesLimitReached: boolean
 }
 
 export interface TabState {
@@ -26,6 +33,7 @@ export interface TabList {
   tickets: Ticket[]
   limitReached: boolean
   refreshedAt: number
+  values: TabValues
 }
 
 interface TicketRow {
@@ -37,15 +45,24 @@ interface TicketRow {
   url: string
 }
 
+interface TabRow {
+  id: number
+  name: string
+  jql: string
+  filters: string
+}
+
 const TICKET_COLUMNS = 'key, summary, status, status_category, issue_type, url'
+const TAB_COLUMNS = 'id, name, jql, filters'
 
 export function createTabStore(db: SqlDatabase) {
   const get = (id: number): Tab | null => {
-    const [row] = db.prepare('SELECT id, name, jql FROM tabs WHERE id = ?').all(id) as Tab[]
-    return row ?? null
+    const [row] = db.prepare(`SELECT ${TAB_COLUMNS} FROM tabs WHERE id = ?`).all(id) as TabRow[]
+    return row ? toTab(row) : null
   }
 
-  const isCurrent = (tab: Tab) => db.prepare('SELECT 1 FROM tabs WHERE id = ? AND jql = ?').all(tab.id, tab.jql).length > 0
+  const isCurrent = (tab: Tab) =>
+    db.prepare('SELECT 1 FROM tabs WHERE id = ? AND jql = ? AND filters = ?').all(tab.id, tab.jql, JSON.stringify(tab.filters)).length > 0
 
   const writeList = (tabId: number, list: TabList) => {
     db.prepare('DELETE FROM tab_tickets WHERE tab_id = ?').run(tabId)
@@ -59,15 +76,20 @@ export function createTabStore(db: SqlDatabase) {
       `INSERT INTO tab_state (tab_id, refreshed_at, error, limit_reached) VALUES (?, ?, NULL, ?)
        ON CONFLICT (tab_id) DO UPDATE SET refreshed_at = excluded.refreshed_at, error = NULL, limit_reached = excluded.limit_reached`,
     ).run(tabId, list.refreshedAt, list.limitReached ? 1 : 0)
+    db.prepare('UPDATE tab_state SET field_values = ?, values_limit_reached = ? WHERE tab_id = ?').run(
+      JSON.stringify(list.values.fieldValues),
+      list.values.valuesLimitReached ? 1 : 0,
+      tabId,
+    )
   }
 
   const insertTab = (name: string, jql: string): Tab =>
-    (db.prepare('INSERT INTO tabs (name, jql) VALUES (?, ?) RETURNING id, name, jql').all(name, jql) as Tab[])[0]!
+    toTab((db.prepare(`INSERT INTO tabs (name, jql) VALUES (?, ?) RETURNING ${TAB_COLUMNS}`).all(name, jql) as TabRow[])[0]!)
 
   return {
     get,
 
-    list: (): Tab[] => db.prepare('SELECT id, name, jql FROM tabs ORDER BY id').all() as Tab[],
+    list: (): Tab[] => (db.prepare(`SELECT ${TAB_COLUMNS} FROM tabs ORDER BY id`).all() as TabRow[]).map(toTab),
 
     insert: (name: string, jql: string, list?: TabList): Tab =>
       inTransaction(db, () => {
@@ -81,6 +103,14 @@ export function createTabStore(db: SqlDatabase) {
         if (!isCurrent(tab)) throw new TabNotFoundError(tab.id)
         db.prepare('UPDATE tabs SET name = ?, jql = ? WHERE id = ?').run(name, jql, tab.id)
         if (list) writeList(tab.id, list)
+      })
+    },
+
+    setFilters(tab: Tab, filters: Filter[], list: TabList): void {
+      inTransaction(db, () => {
+        if (!isCurrent(tab)) throw new TabNotFoundError(tab.id)
+        db.prepare('UPDATE tabs SET filters = ? WHERE id = ?').run(JSON.stringify(filters), tab.id)
+        writeList(tab.id, list)
       })
     },
 
@@ -122,6 +152,14 @@ export function createTabStore(db: SqlDatabase) {
       return { refreshedAt: row?.refreshed_at ?? null, error: row?.error ?? null, limitReached: row?.limit_reached === 1 }
     },
 
+    values(tabId: number): TabValues {
+      const [row] = db.prepare('SELECT field_values, values_limit_reached FROM tab_state WHERE tab_id = ?').all(tabId) as {
+        field_values: string
+        values_limit_reached: number
+      }[]
+      return { fieldValues: row ? JSON.parse(row.field_values) : {}, valuesLimitReached: row?.values_limit_reached === 1 }
+    },
+
     allTickets(): Ticket[] {
       const rows = db
         .prepare(`SELECT ${TICKET_COLUMNS} FROM tab_tickets JOIN tabs ON tabs.id = tab_tickets.tab_id ORDER BY tab_id, position`)
@@ -142,6 +180,10 @@ export function createTabStore(db: SqlDatabase) {
 }
 
 export type TabStore = ReturnType<typeof createTabStore>
+
+function toTab(row: TabRow): Tab {
+  return { id: row.id, name: row.name, jql: row.jql, filters: JSON.parse(row.filters) }
+}
 
 function toTicket(row: TicketRow): Ticket {
   return {

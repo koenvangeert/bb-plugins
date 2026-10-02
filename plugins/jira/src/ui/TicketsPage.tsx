@@ -8,6 +8,8 @@ import { INSTALL_HINT, LOGIN_HINT } from "../acliErrors";
 import type { rpcContract, TicketList, TicketTab } from "../rpc";
 import { TICKET_LIMIT } from "../tickets";
 import { errorMessage } from "../errorMessage";
+import { FilterBar } from "./FilterBar";
+import { FilterDialog } from "./FilterDialog";
 import { formatRefreshTime } from "./format";
 import { StartThreadDialog } from "./StartThreadDialog";
 import { DeleteTabDialog, TabDialog } from "./TabDialog";
@@ -15,7 +17,7 @@ import { usePolled } from "./usePolled";
 
 type TicketRow = TicketTab["tickets"][number];
 
-type TabAction = { kind: "add" } | { kind: "edit" | "delete"; tab: TicketTab };
+type TabAction = { kind: "add" } | { kind: "edit" | "delete"; tab: TicketTab } | { kind: "filter"; tabId: number; index: number | null };
 
 const STATUS_GROUPS = [
   { category: "indeterminate", title: "In progress", dot: "bg-sky-500", pill: "bg-sky-500/12 text-sky-600 dark:text-sky-400" },
@@ -217,9 +219,22 @@ function TabBar({
   );
 }
 
-function TabPanel({ tab, health, onStart }: { tab: TicketTab; health: TicketList["health"]; onStart(ticket: TicketRow): void }) {
+function TabPanel({
+  tab,
+  health,
+  onStart,
+  onChanged,
+  onEditFilter,
+}: {
+  tab: TicketTab;
+  health: TicketList["health"];
+  onStart(ticket: TicketRow): void;
+  onChanged(list: TicketList): void;
+  onEditFilter(index: number | null): void;
+}) {
   return (
     <div role="tabpanel" aria-label={tab.name} className="flex flex-col gap-5">
+      <FilterBar key={tab.id} tab={tab} onChanged={onChanged} onEdit={onEditFilter} />
       <HealthBanner health={health} tab={tab} />
       {tab.tickets.length === 0 && tab.refreshedAt !== null ? (
         <EmptyState icon="CircleCheck">No tickets match the query.</EmptyState>
@@ -262,6 +277,7 @@ export function TicketsPage() {
   const [action, setAction] = useState<TabAction | null>(null);
   const busy = refreshing || Boolean(list?.refreshing);
   const selected = list ? (list.tabs.find((tab) => tab.id === selectedId) ?? list.tabs[0] ?? null) : null;
+  const filterTab = action?.kind === "filter" ? list?.tabs.find((tab) => tab.id === action.tabId) : undefined;
 
   const refresh = async () => {
     setRefreshing(true);
@@ -317,7 +333,13 @@ export function TicketsPage() {
               onEdit={() => setAction({ kind: "edit", tab: selected })}
               onDelete={() => setAction({ kind: "delete", tab: selected })}
             />
-            <TabPanel tab={selected} health={list.health} onStart={setStarting} />
+            <TabPanel
+              tab={selected}
+              health={list.health}
+              onStart={setStarting}
+              onChanged={setList}
+              onEditFilter={(index) => setAction({ kind: "filter", tabId: selected.id, index })}
+            />
           </>
         ) : null}
         {action?.kind === "add" ? (
@@ -331,6 +353,9 @@ export function TicketsPage() {
         ) : null}
         {action?.kind === "edit" ? <TabDialog tab={action.tab} onSaved={setList} onOpenChange={closeAction} /> : null}
         {action?.kind === "delete" ? <DeleteTabDialog tab={action.tab} onDeleted={setList} onOpenChange={closeAction} /> : null}
+        {action?.kind === "filter" && filterTab ? (
+          <FilterDialog tab={filterTab} index={action.index} onSaved={setList} onOpenChange={closeAction} />
+        ) : null}
         {starting ? (
           <StartThreadDialog
             ticketKey={starting.key}

@@ -23,6 +23,12 @@ describe('acli commands', () => {
     expect(args).toEqual(expect.arrayContaining(['--json', '--limit', '200']))
   })
 
+  it('search the fields that filters offer values for', () => {
+    const args = searchArgs('q', 1)
+
+    expect(args[args.indexOf('--fields') + 1]).toBe('key,summary,status,issuetype,priority,assignee,reporter,creator,labels')
+  })
+
   it('view one key with its description', () => {
     expect(viewArgs('ABC-12')).toEqual([
       'jira',

@@ -54,6 +54,9 @@ export const MIGRATIONS = [
     limit_reached INTEGER NOT NULL
   )`,
   `CREATE TABLE tab_seed (id INTEGER PRIMARY KEY CHECK (id = 1))`,
+  `ALTER TABLE tabs ADD COLUMN filters TEXT NOT NULL DEFAULT '[]'`,
+  `ALTER TABLE tab_state ADD COLUMN field_values TEXT NOT NULL DEFAULT '{}'`,
+  `ALTER TABLE tab_state ADD COLUMN values_limit_reached INTEGER NOT NULL DEFAULT 0`,
 ]
 
 export function inTransaction<T>(db: SqlDatabase, work: () => T): T {

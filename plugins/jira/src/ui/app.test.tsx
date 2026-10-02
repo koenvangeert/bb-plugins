@@ -3,6 +3,7 @@ import { cleanup, fireEvent, screen } from "@testing-library/react";
 import { act } from "react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot, type CapturedPluginApp } from "@get-bb/plugin-sdk/testing/app";
+import type { Filter } from "../filterFields";
 import type { ThreadLinkResult, TicketList, TicketTab } from "../rpc";
 import { TICKET_LIMIT } from "../tickets";
 
@@ -21,6 +22,7 @@ const tab = (overrides: Partial<TicketTab> = {}): TicketTab => ({
   id: 1,
   name: "My tickets",
   jql: "assignee = currentUser()",
+  filters: [],
   tickets: [
     ticket("ABC-12", "Fix login", "In Progress", [
       { threadId: "thr_1", title: "Fix login thread", archived: false },
@@ -31,6 +33,14 @@ const tab = (overrides: Partial<TicketTab> = {}): TicketTab => ({
   refreshedAt: Date.now() - 120_000,
   error: null,
   limitReached: false,
+  fieldValues: {
+    status: [
+      { label: "In Progress", jql: '"In Progress"' },
+      { label: "In Review", jql: '"In Review"' },
+      { label: "(empty)", jql: "EMPTY" },
+    ],
+  },
+  valuesLimitReached: false,
   ...overrides,
 });
 
@@ -270,6 +280,151 @@ describe("tab dialogs", () => {
 
     expect(deleteTab).not.toHaveBeenCalled();
     expect(slot.getByRole("tab", { name: "My tickets (2)" })).toBeTruthy();
+  });
+});
+
+describe("tab filters", () => {
+  const statusFilter: Filter = {
+    field: "status",
+    label: "Status",
+    operator: "in",
+    values: [
+      { label: "To Do", jql: '"To Do"' },
+      { label: "In Review", jql: '"In Review"' },
+    ],
+  };
+  const assigneeFilter: Filter = { field: "assignee", label: "Assignee", operator: "not in", values: [{ label: "Ann Lee", jql: '"712020:ann"' }] };
+
+  async function openAdd(slot: ReturnType<typeof renderPage>) {
+    const add = await slot.findByRole("button", { name: "Add filter" });
+    await act(async () => add.click());
+    return {
+      field: (await screen.findByLabelText("Field")) as HTMLSelectElement,
+      apply: screen.getByRole("button", { name: "Apply" }) as HTMLButtonElement,
+    };
+  }
+
+  it("shows one chip per filter", async () => {
+    const slot = renderPage({ tickets: () => list({ filters: [statusFilter, assigneeFilter] }) });
+
+    expect(await slot.findByRole("button", { name: "Status: To Do, In Review" })).toBeTruthy();
+    expect(slot.getByRole("button", { name: "Assignee not: Ann Lee" })).toBeTruthy();
+  });
+
+  it("removes a filter from its chip and shows the new list", async () => {
+    const setFilters = vi.fn(() => list({ filters: [assigneeFilter], tickets: [ticket("ABC-77", "Late one", "To Do")] }));
+    const slot = renderPage({ tickets: () => list({ filters: [statusFilter, assigneeFilter] }), setFilters });
+
+    const remove = await slot.findByRole("button", { name: "Remove filter Status" });
+    await act(async () => remove.click());
+
+    expect(setFilters).toHaveBeenCalledWith({ id: 1, filters: [assigneeFilter] });
+    expect(await slot.findByRole("tab", { name: "My tickets (1)" })).toBeTruthy();
+    expect(slot.queryByRole("button", { name: "Status: To Do, In Review" })).toBeNull();
+  });
+
+  it("offers only the system fields", async () => {
+    const { field } = await openAdd(renderPage({ tickets: () => list() }));
+
+    expect(Array.from(field.options, (option) => option.text)).toEqual([
+      "Status",
+      "Type",
+      "Priority",
+      "Assignee",
+      "Reporter",
+      "Creator",
+      "Labels",
+      "Fix versions",
+      "Affects versions",
+      "Components",
+      "Resolution",
+      "Project",
+      "Parent",
+    ]);
+  });
+
+  it("adds a filter with values from the tab", async () => {
+    const setFilters = vi.fn(() => list({ filters: [statusFilter] }));
+    const slot = renderPage({ tickets: () => list(), setFilters });
+    const { apply } = await openAdd(slot);
+
+    expect(apply.disabled).toBe(true);
+    await act(async () => screen.getByRole("checkbox", { name: "In Review" }).click());
+    await act(async () => screen.getByRole("button", { name: "not in" }).click());
+    await act(async () => apply.click());
+
+    expect(setFilters).toHaveBeenCalledWith({
+      id: 1,
+      filters: [{ field: "status", label: "Status", operator: "not in", values: [{ label: "In Review", jql: '"In Review"' }] }],
+    });
+    expect(screen.queryByLabelText("Field")).toBeNull();
+  });
+
+  it("adds a filter with typed values for a field without a dropdown", async () => {
+    const setFilters = vi.fn(() => list());
+    const { field, apply } = await openAdd(renderPage({ tickets: () => list(), setFilters }));
+
+    fireEvent.change(field, { target: { value: "fixVersions" } });
+    const value = screen.getByLabelText("Value") as HTMLInputElement;
+    fireEvent.change(value, { target: { value: 'v "26.10"' } });
+    fireEvent.keyDown(value, { key: "Enter" });
+    await act(async () => apply.click());
+
+    expect(setFilters).toHaveBeenCalledWith({
+      id: 1,
+      filters: [{ field: "fixVersions", label: "Fix versions", operator: "in", values: [{ label: 'v "26.10"', jql: '"v \\"26.10\\""' }] }],
+    });
+  });
+
+  it("adds the typed value that is still in the input on Apply", async () => {
+    const setFilters = vi.fn(() => list());
+    const { field, apply } = await openAdd(renderPage({ tickets: () => list(), setFilters }));
+
+    fireEvent.change(field, { target: { value: "components" } });
+    fireEvent.change(screen.getByLabelText("Value"), { target: { value: "Search" } });
+    await act(async () => apply.click());
+
+    expect(setFilters).toHaveBeenCalledWith({
+      id: 1,
+      filters: [{ field: "components", label: "Components", operator: "in", values: [{ label: "Search", jql: '"Search"' }] }],
+    });
+  });
+
+  it("says when the values come from a cut list", async () => {
+    await openAdd(renderPage({ tickets: () => list({ valuesLimitReached: true }) }));
+
+    expect(screen.getByText(new RegExp(`first ${TICKET_LIMIT} tickets`))).toBeTruthy();
+  });
+
+  it("keeps the dialog open and shows the error of a bad filter", async () => {
+    const setFilters = vi.fn(() => {
+      throw new Error("The value 'x' does not exist for the field 'fixVersion'.");
+    });
+    const { field, apply } = await openAdd(renderPage({ tickets: () => list(), setFilters }));
+    fireEvent.change(field, { target: { value: "fixVersions" } });
+    const value = screen.getByLabelText("Value");
+    fireEvent.change(value, { target: { value: "x" } });
+    fireEvent.keyDown(value, { key: "Enter" });
+
+    await act(async () => apply.click());
+
+    expect(await screen.findByText(/does not exist for the field/)).toBeTruthy();
+    expect(screen.getByLabelText("Field")).toBeTruthy();
+  });
+
+  it("edits a filter from its chip with its values checked", async () => {
+    const setFilters = vi.fn(() => list());
+    const slot = renderPage({ tickets: () => list({ filters: [statusFilter, assigneeFilter] }), setFilters });
+    const chip = await slot.findByRole("button", { name: "Status: To Do, In Review" });
+    await act(async () => chip.click());
+
+    expect((screen.getByRole("checkbox", { name: "To Do" }) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByRole("checkbox", { name: "In Review" }) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByRole("checkbox", { name: "In Progress" }) as HTMLInputElement).checked).toBe(false);
+    await act(async () => screen.getByRole("checkbox", { name: "To Do" }).click());
+    await act(async () => screen.getByRole("button", { name: "Apply" }).click());
+
+    expect(setFilters).toHaveBeenCalledWith({ id: 1, filters: [{ ...statusFilter, values: [statusFilter.values[1]] }, assigneeFilter] });
   });
 });
 

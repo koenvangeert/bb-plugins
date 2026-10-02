@@ -1,8 +1,9 @@
 import { defineRpcContract } from '@get-bb/plugin-sdk'
 import { z } from 'zod'
+import { EMPTY_VALUE, FIELD_IDS, type Filter } from './filterFields'
 import type { ThreadLinks } from './threadLinks'
 import { buildPrompt, isTicketKey } from './tickets'
-import type { TabInput, TicketService, TicketSnapshot } from './ticketService'
+import type { FiltersInput, TabInput, TicketService, TicketSnapshot } from './ticketService'
 
 const ticket = z.object({
   key: z.string(),
@@ -13,16 +14,33 @@ const ticket = z.object({
   url: z.string(),
 })
 
+const QUOTED_LITERAL = /^"(?:[^"\\]|\\.)*"$/
+
+const filterValue = z.object({
+  label: z.string(),
+  jql: z.string().refine((jql) => jql === EMPTY_VALUE.jql || QUOTED_LITERAL.test(jql), 'Not a quoted JQL value.'),
+})
+
+const filter: z.ZodType<Filter> = z.object({
+  field: z.enum(FIELD_IDS),
+  label: z.string().min(1),
+  operator: z.enum(['in', 'not in']),
+  values: z.array(filterValue).min(1),
+})
+
 const linkedThread = z.object({ threadId: z.string(), title: z.string(), archived: z.boolean() })
 
 const tab = z.object({
   id: z.number(),
   name: z.string(),
   jql: z.string(),
+  filters: z.array(filter),
   tickets: z.array(ticket.extend({ threads: z.array(linkedThread) })),
   refreshedAt: z.number().nullable(),
   error: z.string().nullable(),
   limitReached: z.boolean(),
+  fieldValues: z.record(z.string(), z.array(filterValue)),
+  valuesLimitReached: z.boolean(),
 })
 
 const ticketList = z.object({
@@ -51,6 +69,7 @@ export const rpcContract = defineRpcContract({
     output: ticketList,
   },
   deleteTab: { input: z.object({ id: tabId }).strict(), output: ticketList },
+  setFilters: { input: z.object({ id: tabId, filters: z.array(filter) }).strict(), output: ticketList },
   pickerTickets: { input: z.null(), output: z.array(ticket) },
   ticket: {
     input: z.object({ key: ticketKey }).strict(),
@@ -89,6 +108,7 @@ export function createRpcHandlers(deps: {
     refresh: async () => withThreads(await tickets.refresh()),
     saveTab: async (input: TabInput) => withThreads(await tickets.saveTab(input)),
     deleteTab: ({ id }: { id: number }) => withThreads(tickets.deleteTab(id)),
+    setFilters: async (input: FiltersInput) => withThreads(await tickets.setFilters(input)),
     pickerTickets: async () => tickets.allTickets(),
     ticket: async ({ key }: { key: string }) => {
       const { description, ...detail } = await tickets.ticket(key)

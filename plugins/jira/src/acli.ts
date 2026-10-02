@@ -1,4 +1,5 @@
 import { execFile as nodeExecFile } from 'node:child_process'
+import { SEARCHABLE_FIELD_IDS } from './filterFields'
 
 export const ACLI_TIMEOUT_MS = 30_000
 
@@ -29,7 +30,7 @@ export function searchArgs(jql: string, limit: number): string[] {
     '--jql',
     jql,
     '--fields',
-    'key,summary,status,issuetype',
+    ['key', 'summary', ...SEARCHABLE_FIELD_IDS].join(','),
     '--limit',
     String(limit),
     '--json',

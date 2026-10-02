@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it, vi } from 'vitest'
 import { fakeAcli } from './fakeAcli'
+import { EMPTY_VALUE, type Filter } from './filterFields'
 import searchFixture from './fixtures/search.json'
 import viewFixture from './fixtures/view.json'
 import { createTabStore, TabNotFoundError } from './tabs'
@@ -8,6 +9,7 @@ import { migratedDatabase } from './testDatabase'
 import { InvalidKeyError, TICKET_LIMIT } from './tickets'
 import { createTicketService, VIEW_CACHE_MS, type TicketSnapshot } from './ticketService'
 
+const NO_VALUES = { fieldValues: {}, valuesLimitReached: false }
 const SEARCH_OK = { stdout: JSON.stringify(searchFixture) }
 const LOGGED_OUT = { exitCode: 1, stderr: "✗ Error: unauthorized: use 'acli jira auth login' to authenticate" }
 
@@ -224,6 +226,102 @@ describe('ticket service', () => {
 
       expect((await refreshing).tabs).toEqual([])
       expect(db.prepare('SELECT COUNT(*) AS n FROM tab_tickets').all()).toEqual([{ n: 0 }])
+    })
+  })
+
+  describe('with filters', () => {
+    const toDo: Filter = { field: 'status', label: 'Status', operator: 'in', values: [{ label: 'In Review', jql: '"In Review"' }] }
+    const filteredJql = '(my jql) AND status in ("In Review")'
+    const replies: Record<string, object> = {
+      'my jql': SEARCH_OK,
+      [filteredJql]: { stdout: JSON.stringify([searchFixture[1]]) },
+    }
+    const byJql = (args: string[]) => replies[args[args.indexOf('--jql') + 1]!] ?? { exitCode: 1, stderr: 'bad JQL' }
+    const jqls = (acli: ReturnType<typeof fakeAcli>) => searches(acli).map((args) => args[args.indexOf('--jql') + 1])
+
+    it('refreshes a filtered tab with the filtered query and reads its values from the tab query', async () => {
+      const { tickets, tabs, acli } = service(fakeAcli({ search: byJql }))
+      tabs.setFilters(tabs.list()[0]!, [toDo], { tickets: [], limitReached: false, refreshedAt: 1, values: NO_VALUES })
+
+      const tab = firstTab(await tickets.refresh())
+
+      expect(jqls(acli)).toEqual(['my jql', filteredJql])
+      expect(tab.tickets.map((ticket) => ticket.key)).toEqual(['ABC-40'])
+      expect(tab.filters).toEqual([toDo])
+      expect(tab.fieldValues.status).toEqual([
+        { label: 'In Progress', jql: '"In Progress"' },
+        { label: 'In Review', jql: '"In Review"' },
+        EMPTY_VALUE,
+      ])
+    })
+
+    it('reads a tab without filters with one search and stores its values', async () => {
+      const { tickets, acli } = service(fakeAcli({ search: byJql }))
+
+      const tab = firstTab(await tickets.refresh())
+
+      expect(jqls(acli)).toEqual(['my jql'])
+      expect(tab.fieldValues.assignee).toEqual([{ label: 'Ann Lee', jql: '"712020:ann"' }, EMPTY_VALUE])
+      expect(tab.valuesLimitReached).toBe(false)
+    })
+
+    it('keeps the last good list and values when the filtered search fails', async () => {
+      let filteredFails = false
+      const acli = fakeAcli({ search: (args) => (filteredFails && args.includes(filteredJql) ? { exitCode: 1, stderr: 'timeout' } : byJql(args)) })
+      const { tickets, tabs } = service(acli)
+      tabs.setFilters(tabs.list()[0]!, [toDo], { tickets: [], limitReached: false, refreshedAt: 1, values: NO_VALUES })
+      const good = firstTab(await tickets.refresh())
+      filteredFails = true
+
+      const tab = firstTab(await tickets.refresh())
+
+      expect(tab).toMatchObject({ tickets: good.tickets, fieldValues: good.fieldValues, error: 'timeout' })
+    })
+
+    it('saves filters with their list after the filtered query runs, and keeps the values', async () => {
+      const { tickets, tabs, acli } = service(fakeAcli({ search: byJql }))
+      await tickets.refresh()
+      const values = firstTab(tickets.snapshot()).fieldValues
+
+      const tab = firstTab(await tickets.setFilters({ id: tabs.list()[0]!.id, filters: [toDo] }))
+
+      expect(jqls(acli)).toEqual(['my jql', filteredJql])
+      expect(tab).toMatchObject({ filters: [toDo], fieldValues: values })
+      expect(tab.tickets.map((ticket) => ticket.key)).toEqual(['ABC-40'])
+    })
+
+    it('saves nothing when the filtered query fails', async () => {
+      const { tickets, tabs } = service(fakeAcli({ search: byJql }))
+      const broken: Filter = { ...toDo, values: [{ label: 'x', jql: '"x"' }] }
+
+      await expect(tickets.setFilters({ id: tabs.list()[0]!.id, filters: [broken] })).rejects.toThrow('bad JQL')
+
+      expect(tabs.list()[0]!.filters).toEqual([])
+    })
+
+    it('removes all filters with one search of the tab query', async () => {
+      const { tickets, tabs, acli } = service(fakeAcli({ search: byJql }))
+      tabs.setFilters(tabs.list()[0]!, [toDo], { tickets: [], limitReached: false, refreshedAt: 1, values: NO_VALUES })
+
+      const tab = firstTab(await tickets.setFilters({ id: tabs.list()[0]!.id, filters: [] }))
+
+      expect(jqls(acli)).toEqual(['my jql'])
+      expect(tab.tickets).toHaveLength(3)
+      expect(tab.fieldValues.status).toHaveLength(3)
+    })
+
+    it('rejects filters for a tab that does not exist', async () => {
+      await expect(service().tickets.setFilters({ id: 999, filters: [] })).rejects.toBeInstanceOf(TabNotFoundError)
+    })
+
+    it('keeps the filters when the tab query changes', async () => {
+      const { tickets, tabs, acli } = service(fakeAcli({ search: (args) => (args.includes('(new jql) AND status in ("In Review")') ? { stdout: '[]' } : SEARCH_OK) }))
+      tabs.setFilters(tabs.list()[0]!, [toDo], { tickets: [], limitReached: false, refreshedAt: 1, values: NO_VALUES })
+
+      const tab = firstTab(await tickets.saveTab({ id: tabs.list()[0]!.id, name: 'Mine', jql: 'new jql' }))
+
+      expect(jqls(acli)).toEqual(['new jql', '(new jql) AND status in ("In Review")'])
+      expect(tab).toMatchObject({ jql: 'new jql', filters: [toDo], tickets: [] })
     })
   })
 

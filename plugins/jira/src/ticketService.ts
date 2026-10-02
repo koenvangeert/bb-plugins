@@ -2,26 +2,35 @@ import { authStatusArgs, searchArgs, viewArgs, type AcliRunner } from './acli'
 import { AcliError, classifyFailure } from './acliErrors'
 import type { SqlDatabase } from './database'
 import { errorMessage } from './errorMessage'
+import type { Filter } from './filterFields'
+import { effectiveJql } from './filterJql'
 import {
+  fieldValues,
   InvalidKeyError,
   isTicketKey,
   parseSearch,
   parseSiteUrl,
   parseView,
   TICKET_LIMIT,
+  type SearchIssue,
   type Ticket,
   type TicketDetail,
 } from './tickets'
-import { TabNotFoundError, type Tab, type TabList, type TabStore } from './tabs'
+import { TabNotFoundError, type Tab, type TabList, type TabStore, type TabValues } from './tabs'
 
 export const VIEW_CACHE_MS = 5 * 60_000
 
 export type Health = 'ok' | 'missing' | 'loggedOut'
 
-export interface TabSnapshot extends Tab {
+export interface TabSnapshot extends Tab, TabValues {
   tickets: Ticket[]
   refreshedAt: number | null
   error: string | null
+  limitReached: boolean
+}
+
+interface SearchResult {
+  issues: SearchIssue[]
   limitReached: boolean
 }
 
@@ -37,10 +46,16 @@ export interface TabInput {
   jql: string
 }
 
+export interface FiltersInput {
+  id: number
+  filters: Filter[]
+}
+
 export interface TicketService {
   snapshot(): TicketSnapshot
   refresh(): Promise<TicketSnapshot>
   saveTab(input: TabInput): Promise<TicketSnapshot>
+  setFilters(input: FiltersInput): Promise<TicketSnapshot>
   deleteTab(id: number): TicketSnapshot
   allTickets(): Ticket[]
   ticket(key: string): Promise<TicketDetail>
@@ -72,7 +87,7 @@ export function createTicketService(options: {
   }
 
   const snapshot = (): TicketSnapshot => ({
-    tabs: tabs.list().map((tab) => ({ ...tab, tickets: tabs.tickets(tab.id), ...tabs.state(tab.id) })),
+    tabs: tabs.list().map((tab) => ({ ...tab, tickets: tabs.tickets(tab.id), ...tabs.state(tab.id), ...tabs.values(tab.id) })),
     health: readHealth(),
     refreshing: running !== null,
   })
@@ -93,11 +108,11 @@ export function createTicketService(options: {
     reportedHealth = health
   }
 
-  const searchAndTrackHealth = async (jql: string): Promise<TabList> => {
+  const searchAndTrackHealth = async (jql: string): Promise<SearchResult> => {
     try {
-      const list = await search(jql)
+      const result = await search(jql)
       setHealth('ok', null)
-      return list
+      return result
     } catch (error) {
       const failedHealth = healthOf(error)
       if (failedHealth) setHealth(failedHealth, errorMessage(error))
@@ -105,18 +120,32 @@ export function createTicketService(options: {
     }
   }
 
-  const search = async (jql: string): Promise<TabList> => {
+  const search = async (jql: string): Promise<SearchResult> => {
     const result = await acli.run(searchArgs(jql, TICKET_LIMIT + 1))
     const failure = classifyFailure(result, 'search')
     if (failure) throw failure
     const found = parseSearch(result.stdout, await resolveSiteUrl())
-    return { tickets: found.slice(0, TICKET_LIMIT), limitReached: found.length > TICKET_LIMIT, refreshedAt: now() }
+    return { issues: found.slice(0, TICKET_LIMIT), limitReached: found.length > TICKET_LIMIT }
+  }
+
+  const listOf = (result: SearchResult, values: TabValues): TabList => ({
+    tickets: result.issues.map((issue) => issue.ticket),
+    limitReached: result.limitReached,
+    refreshedAt: now(),
+    values,
+  })
+
+  const readTab = async ({ jql, filters }: Pick<Tab, 'jql' | 'filters'>): Promise<TabList> => {
+    const base = await searchAndTrackHealth(jql)
+    const values = { fieldValues: fieldValues(base.issues), valuesLimitReached: base.limitReached }
+    if (filters.length === 0) return listOf(base, values)
+    return listOf(await searchAndTrackHealth(effectiveJql(jql, filters)), values)
   }
 
   const refreshNow = async (): Promise<TicketSnapshot> => {
     for (const tab of tabs.list()) {
       try {
-        tabs.recordList(tab, await searchAndTrackHealth(tab.jql))
+        tabs.recordList(tab, await readTab(tab))
       } catch (error) {
         tabs.recordError(tab, errorMessage(error))
         if (healthOf(error)) break
@@ -142,12 +171,22 @@ export function createTicketService(options: {
     },
     async saveTab({ id, name, jql }) {
       if (id === undefined) {
-        tabs.insert(name, jql, await searchAndTrackHealth(jql))
+        tabs.insert(name, jql, await readTab({ jql, filters: [] }))
         return snapshot()
       }
       const existing = tabs.get(id)
       if (!existing) throw new TabNotFoundError(id)
-      tabs.update(existing, name, jql, jql === existing.jql ? undefined : await searchAndTrackHealth(jql))
+      tabs.update(existing, name, jql, jql === existing.jql ? undefined : await readTab({ ...existing, jql }))
+      return snapshot()
+    },
+    async setFilters({ id, filters }) {
+      const existing = tabs.get(id)
+      if (!existing) throw new TabNotFoundError(id)
+      const list =
+        filters.length === 0
+          ? await readTab({ jql: existing.jql, filters })
+          : listOf(await searchAndTrackHealth(effectiveJql(existing.jql, filters)), tabs.values(id))
+      tabs.setFilters(existing, filters, list)
       return snapshot()
     },
     deleteTab(id) {

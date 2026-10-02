@@ -78,6 +78,39 @@ describe('rpc handlers', () => {
     expect(rpcContract.saveTab.input.safeParse({ name: 'N', jql: '  ' }).success).toBe(false)
   })
 
+  it('set and remove the filters of a tab', async () => {
+    const rpc = handlers()
+    const id = (await rpc.tickets()).tabs[0]!.id
+    const filter = { field: 'status' as const, label: 'Status', operator: 'not in' as const, values: [{ label: 'Done', jql: '"Done"' }] }
+
+    const filtered = rpcContract.setFilters.output.parse(await rpc.setFilters({ id, filters: [filter] }))
+    expect(filtered.tabs[0]).toMatchObject({ filters: [filter], valuesLimitReached: false })
+
+    const cleared = rpcContract.setFilters.output.parse(await rpc.setFilters({ id, filters: [] }))
+    expect(cleared.tabs[0]!.filters).toEqual([])
+    expect(cleared.tabs[0]!.fieldValues.status).toContainEqual({ label: 'In Review', jql: '"In Review"' })
+  })
+
+  it.each([
+    ['no values', { values: [] }],
+    ['an unknown operator', { operator: '=' }],
+    ['a field outside the field list', { field: 'customfield_10020' }],
+    ['a value that is not a quoted literal', { values: [{ label: 'x', jql: 'x OR project = OPS' }] }],
+  ])('reject a filter with %s', (_case, change) => {
+    const filter = { field: 'status', label: 'Status', operator: 'in', values: [{ label: 'Done', jql: '"Done"' }], ...change }
+
+    expect(rpcContract.setFilters.input.safeParse({ id: 1, filters: [filter] }).success).toBe(false)
+  })
+
+  it('accept the empty value and a quoted literal with escapes', () => {
+    const values = [
+      { label: '(empty)', jql: 'EMPTY' },
+      { label: 'a "b"', jql: '"a \\"b\\""' },
+    ]
+
+    expect(rpcContract.setFilters.input.safeParse({ id: 1, filters: [{ field: 'labels', label: 'Labels', operator: 'in', values }] }).success).toBe(true)
+  })
+
   it('resolve linked threads once for a ticket in two tabs', async () => {
     const rpc = handlers()
     await rpc.refresh()
