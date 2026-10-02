@@ -12,109 +12,70 @@ import {
   type Ticket,
   type TicketDetail,
 } from './tickets'
+import { TabNotFoundError, type Tab, type TabList, type TabStore } from './tabs'
 
 export const VIEW_CACHE_MS = 5 * 60_000
 
 export type Health = 'ok' | 'missing' | 'loggedOut'
 
-export interface TicketSnapshot {
+export interface TabSnapshot extends Tab {
   tickets: Ticket[]
   refreshedAt: number | null
   error: string | null
-  health: Health
   limitReached: boolean
+}
+
+export interface TicketSnapshot {
+  tabs: TabSnapshot[]
+  health: Health
   refreshing: boolean
+}
+
+export interface TabInput {
+  id?: number
+  name: string
+  jql: string
 }
 
 export interface TicketService {
   snapshot(): TicketSnapshot
   refresh(): Promise<TicketSnapshot>
+  saveTab(input: TabInput): Promise<TicketSnapshot>
+  deleteTab(id: number): TicketSnapshot
+  allTickets(): Ticket[]
   ticket(key: string): Promise<TicketDetail>
-}
-
-interface TicketRow {
-  key: string
-  summary: string
-  status: string
-  status_category: string
-  issue_type: string
-  url: string
-}
-
-interface StateRow {
-  refreshed_at: number | null
-  error: string | null
-  health: Health
-  limit_reached: number
 }
 
 export function createTicketService(options: {
   db: SqlDatabase
+  tabs: TabStore
   acli: AcliRunner
-  readJql(): Promise<string>
   now(): number
   onHealth?(health: Health, message: string | null): void
 }): TicketService {
-  const { db, acli, readJql, now, onHealth } = options
+  const { db, tabs, acli, now, onHealth } = options
   let running: Promise<TicketSnapshot> | null = null
   let siteUrl: Promise<string | undefined> | null = null
   let reportedHealth: Health = 'ok'
   const viewCache = new Map<string, { at: number; result: Promise<TicketDetail> }>()
 
-  const readState = (): StateRow => {
-    const [row] = db
-      .prepare('SELECT refreshed_at, error, health, limit_reached FROM refresh_state WHERE id = 1')
-      .all() as StateRow[]
-    return row ?? { refreshed_at: null, error: null, health: 'ok', limit_reached: 0 }
+  const readHealth = (): Health => {
+    const [row] = db.prepare('SELECT health FROM refresh_state WHERE id = 1').all() as { health: Health }[]
+    return row?.health ?? 'ok'
   }
 
-  const writeState = (state: StateRow) => {
+  const writeHealth = (health: Health) => {
     db.prepare(
-      `INSERT INTO refresh_state (id, refreshed_at, error, health, limit_reached) VALUES (1, ?, ?, ?, ?)
-       ON CONFLICT (id) DO UPDATE SET refreshed_at = excluded.refreshed_at, error = excluded.error,
-         health = excluded.health, limit_reached = excluded.limit_reached`,
-    ).run(state.refreshed_at, state.error, state.health, state.limit_reached)
+      `INSERT INTO refresh_state (id, refreshed_at, error, health, limit_reached) VALUES (1, NULL, NULL, ?, 0)
+       ON CONFLICT (id) DO UPDATE SET health = excluded.health`,
+    ).run(health)
   }
 
-  const replaceTickets = (tickets: Ticket[], limitReached: boolean) => {
-    db.exec('BEGIN')
-    try {
-      db.prepare('DELETE FROM tickets').run()
-      const insert = db.prepare(
-        'INSERT INTO tickets (key, summary, status, status_category, issue_type, url, position) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      )
-      tickets.forEach((ticket, position) =>
-        insert.run(ticket.key, ticket.summary, ticket.status, ticket.statusCategory, ticket.issueType, ticket.url, position),
-      )
-      writeState({ refreshed_at: now(), error: null, health: 'ok', limit_reached: limitReached ? 1 : 0 })
-      db.exec('COMMIT')
-    } catch (error) {
-      db.exec('ROLLBACK')
-      throw error
-    }
-  }
-
-  const snapshot = (): TicketSnapshot => {
-    const rows = db
-      .prepare('SELECT key, summary, status, status_category, issue_type, url FROM tickets ORDER BY position')
-      .all() as TicketRow[]
-    const state = readState()
-    return {
-      tickets: rows.map((row) => ({
-        key: row.key,
-        summary: row.summary,
-        status: row.status,
-        statusCategory: row.status_category,
-        issueType: row.issue_type,
-        url: row.url,
-      })),
-      refreshedAt: state.refreshed_at,
-      error: state.error,
-      health: state.health,
-      limitReached: state.limit_reached === 1,
-      refreshing: running !== null,
-    }
-  }
+  const snapshot = (): TicketSnapshot => ({
+    tabs: tabs.list().map((tab) => ({ ...tab, tickets: tabs.tickets(tab.id), ...tabs.state(tab.id) })),
+    health: readHealth(),
+    refreshing: running !== null,
+  })
 
   const resolveSiteUrl = (): Promise<string | undefined> => {
     siteUrl ??= acli.run(authStatusArgs()).then((result) => {
@@ -125,26 +86,41 @@ export function createTicketService(options: {
     return siteUrl
   }
 
-  const report = (health: Health, message: string | null) => {
+  const setHealth = (health: Health, message: string | null) => {
+    if (health === 'loggedOut') siteUrl = null
+    writeHealth(health)
     if (health !== reportedHealth) onHealth?.(health, message)
     reportedHealth = health
   }
 
-  const refreshNow = async (): Promise<TicketSnapshot> => {
-    const previous = readState()
+  const searchAndTrackHealth = async (jql: string): Promise<TabList> => {
     try {
-      const result = await acli.run(searchArgs(await readJql(), TICKET_LIMIT + 1))
-      const failure = classifyFailure(result, 'search')
-      if (failure) throw failure
-      const tickets = parseSearch(result.stdout, await resolveSiteUrl())
-      replaceTickets(tickets.slice(0, TICKET_LIMIT), tickets.length > TICKET_LIMIT)
-      report('ok', null)
+      const list = await search(jql)
+      setHealth('ok', null)
+      return list
     } catch (error) {
-      const message = errorMessage(error)
-      const health = healthOf(error) ?? previous.health
-      if (health === 'loggedOut') siteUrl = null
-      writeState({ ...previous, error: message, health })
-      report(health, message)
+      const failedHealth = healthOf(error)
+      if (failedHealth) setHealth(failedHealth, errorMessage(error))
+      throw error
+    }
+  }
+
+  const search = async (jql: string): Promise<TabList> => {
+    const result = await acli.run(searchArgs(jql, TICKET_LIMIT + 1))
+    const failure = classifyFailure(result, 'search')
+    if (failure) throw failure
+    const found = parseSearch(result.stdout, await resolveSiteUrl())
+    return { tickets: found.slice(0, TICKET_LIMIT), limitReached: found.length > TICKET_LIMIT, refreshedAt: now() }
+  }
+
+  const refreshNow = async (): Promise<TicketSnapshot> => {
+    for (const tab of tabs.list()) {
+      try {
+        tabs.recordList(tab, await searchAndTrackHealth(tab.jql))
+      } catch (error) {
+        tabs.recordError(tab, errorMessage(error))
+        if (healthOf(error)) break
+      }
     }
     return snapshot()
   }
@@ -164,6 +140,21 @@ export function createTicketService(options: {
       })
       return running
     },
+    async saveTab({ id, name, jql }) {
+      if (id === undefined) {
+        tabs.insert(name, jql, await searchAndTrackHealth(jql))
+        return snapshot()
+      }
+      const existing = tabs.get(id)
+      if (!existing) throw new TabNotFoundError(id)
+      tabs.update(existing, name, jql, jql === existing.jql ? undefined : await searchAndTrackHealth(jql))
+      return snapshot()
+    },
+    deleteTab(id) {
+      tabs.delete(id)
+      return snapshot()
+    },
+    allTickets: () => tabs.allTickets(),
     ticket(key) {
       if (!isTicketKey(key)) return Promise.reject(new InvalidKeyError(key))
       const cached = viewCache.get(key)

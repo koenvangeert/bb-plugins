@@ -39,7 +39,7 @@ export interface LinkedThread {
 export function createThreadLinks(options: { db: SqlDatabase; sdk: ThreadLinkSdk; tickets: TicketService }) {
   const { db, sdk, tickets } = options
 
-  const cachedTicket = (key: string) => tickets.snapshot().tickets.find((ticket) => ticket.key === key) ?? null
+  const cachedTicket = (key: string) => tickets.allTickets().find((ticket) => ticket.key === key) ?? null
 
   const resolveTicket = async (key: string): Promise<Ticket> => cachedTicket(key) ?? (await tickets.ticket(key))
 

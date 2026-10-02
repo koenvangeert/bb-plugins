@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { fakeAcli } from './fakeAcli'
 import searchFixture from './fixtures/search.json'
 import viewFixture from './fixtures/view.json'
+import { createTabStore } from './tabs'
 import { migratedDatabase } from './testDatabase'
 import { createThreadLinks, type ThreadLinkSdk } from './threadLinks'
 import { buildPrompt, InvalidKeyError } from './tickets'
@@ -49,12 +50,20 @@ function fakeSdk() {
 
 const KEYS = new Set(['ABC-12', 'ABC-40', 'XYZ-7'])
 
+const OTHER_TEAM_ISSUE = { ...searchFixture[0], key: 'OTH-3', fields: { ...searchFixture[0]!.fields, summary: 'Second tab ticket' } }
+
 const XYZ_VIEW = JSON.stringify({ ...viewFixture, key: 'XYZ-7', fields: { ...viewFixture.fields, summary: 'Other team ticket' } })
 
 async function setup(view: object = { stdout: XYZ_VIEW }) {
   const db = migratedDatabase()
-  const acli = fakeAcli({ search: { stdout: JSON.stringify(searchFixture) }, view })
-  const tickets = createTicketService({ db, acli: acli.runner, readJql: async () => 'jql', now: () => 1 })
+  const tabs = createTabStore(db)
+  tabs.insert('Mine', 'mine')
+  tabs.insert('Other team', 'other')
+  const acli = fakeAcli({
+    search: (args) => ({ stdout: JSON.stringify(args.includes('other') ? [OTHER_TEAM_ISSUE] : searchFixture) }),
+    view,
+  })
+  const tickets = createTicketService({ db, tabs, acli: acli.runner, now: () => 1 })
   await tickets.refresh()
   const bb = fakeSdk()
   bb.addThread('thr_1')
@@ -79,6 +88,14 @@ describe('thread links', () => {
     expect(threads.get('thr_1')!.metadata).toEqual({ issueKey: 'ABC-12' })
     expect(acli.calls).toHaveLength(searchCalls)
     expect(await links.linkedThreads(KEYS)).toEqual({ 'ABC-12': [{ threadId: 'thr_1', title: 'Thread thr_1', archived: false }] })
+  })
+
+  it('links a ticket that is only in a second tab without calling acli', async () => {
+    const { links, acli } = await setup()
+    const calls = acli.calls.length
+
+    expect(await links.link('thr_1', 'OTH-3')).toMatchObject({ issueKey: 'OTH-3', ticket: { summary: 'Second tab ticket' } })
+    expect(acli.calls).toHaveLength(calls)
   })
 
   it('links a typed key that is not in the list after reading it through acli', async () => {

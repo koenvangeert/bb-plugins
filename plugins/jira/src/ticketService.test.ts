@@ -3,21 +3,29 @@ import { describe, expect, it, vi } from 'vitest'
 import { fakeAcli } from './fakeAcli'
 import searchFixture from './fixtures/search.json'
 import viewFixture from './fixtures/view.json'
+import { createTabStore, TabNotFoundError } from './tabs'
 import { migratedDatabase } from './testDatabase'
 import { InvalidKeyError, TICKET_LIMIT } from './tickets'
-import { createTicketService, VIEW_CACHE_MS } from './ticketService'
+import { createTicketService, VIEW_CACHE_MS, type TicketSnapshot } from './ticketService'
 
 const SEARCH_OK = { stdout: JSON.stringify(searchFixture) }
 const LOGGED_OUT = { exitCode: 1, stderr: "✗ Error: unauthorized: use 'acli jira auth login' to authenticate" }
 
-function service(acli = fakeAcli({ search: SEARCH_OK }), onHealth = vi.fn(), now = () => 1_000) {
-  const db = migratedDatabase()
-  return { db, onHealth, acli, tickets: createTicketService({ db, acli: acli.runner, readJql: async () => 'my jql', now, onHealth }) }
+function service(acli = fakeAcli({ search: SEARCH_OK }), onHealth = vi.fn(), now = () => 1_000, db = migratedDatabase()) {
+  const tabs = createTabStore(db)
+  if (tabs.list().length === 0) tabs.insert('Mine', 'my jql')
+  return { db, tabs, onHealth, acli, tickets: createTicketService({ db, tabs, acli: acli.runner, now, onHealth }) }
 }
+
+const firstTab = (snapshot: TicketSnapshot) => snapshot.tabs[0]!
+const searches = (acli: ReturnType<typeof fakeAcli>) => acli.calls.filter((args) => args[2] === 'search')
 
 describe('ticket service', () => {
   it('starts empty before the first refresh', () => {
-    expect(service().tickets.snapshot()).toMatchObject({ tickets: [], refreshedAt: null, error: null, health: 'ok' })
+    expect(service().tickets.snapshot()).toMatchObject({
+      tabs: [{ name: 'Mine', jql: 'my jql', tickets: [], refreshedAt: null, error: null, limitReached: false }],
+      health: 'ok',
+    })
   })
 
   it('stores the tickets from a refresh in query order', async () => {
@@ -25,8 +33,9 @@ describe('ticket service', () => {
 
     const snapshot = await tickets.refresh()
 
-    expect(snapshot.tickets.map((ticket) => ticket.key)).toEqual(['ABC-12', 'ABC-40', 'ABC-77'])
-    expect(snapshot).toMatchObject({ refreshedAt: 1_000, error: null, health: 'ok', limitReached: false })
+    expect(firstTab(snapshot).tickets.map((ticket) => ticket.key)).toEqual(['ABC-12', 'ABC-40', 'ABC-77'])
+    expect(firstTab(snapshot)).toMatchObject({ refreshedAt: 1_000, error: null, limitReached: false })
+    expect(snapshot.health).toBe('ok')
     expect(acli.calls[0]).toContain('my jql')
   })
 
@@ -41,8 +50,9 @@ describe('ticket service', () => {
 
     const snapshot = await tickets.refresh()
 
-    expect(snapshot.tickets).toHaveLength(3)
-    expect(snapshot).toMatchObject({ refreshedAt: 1_000, error: 'connection reset', health: 'ok' })
+    expect(firstTab(snapshot).tickets).toHaveLength(3)
+    expect(firstTab(snapshot)).toMatchObject({ refreshedAt: 1_000, error: 'connection reset' })
+    expect(snapshot.health).toBe('ok')
   })
 
   it('replaces the list on the next good refresh', async () => {
@@ -51,7 +61,7 @@ describe('ticket service', () => {
     await tickets.refresh()
     result = { stdout: JSON.stringify([searchFixture[1]]) }
 
-    expect((await tickets.refresh()).tickets.map((ticket) => ticket.key)).toEqual(['ABC-40'])
+    expect(firstTab(await tickets.refresh()).tickets.map((ticket) => ticket.key)).toEqual(['ABC-40'])
   })
 
   it('runs acli once when a manual refresh joins a running refresh', async () => {
@@ -66,7 +76,7 @@ describe('ticket service', () => {
     release()
 
     expect(await second).toEqual(await first)
-    expect(acli.calls.filter((args) => args[2] === 'search')).toHaveLength(1)
+    expect(searches(acli)).toHaveLength(1)
     expect(tickets.snapshot().refreshing).toBe(false)
   })
 
@@ -74,11 +84,15 @@ describe('ticket service', () => {
     let result: object = LOGGED_OUT
     const { tickets, onHealth } = service(fakeAcli({ search: () => result }))
 
-    expect(await tickets.refresh()).toMatchObject({ health: 'loggedOut', error: expect.stringContaining('acli jira auth login') })
+    const loggedOut = await tickets.refresh()
+    expect(loggedOut.health).toBe('loggedOut')
+    expect(firstTab(loggedOut)).toMatchObject({ error: expect.stringContaining('acli jira auth login') })
     expect(onHealth).toHaveBeenLastCalledWith('loggedOut', expect.stringContaining('acli jira auth login'))
 
     result = SEARCH_OK
-    expect(await tickets.refresh()).toMatchObject({ health: 'ok', error: null })
+    const recovered = await tickets.refresh()
+    expect(recovered.health).toBe('ok')
+    expect(firstTab(recovered).error).toBeNull()
     expect(onHealth).toHaveBeenLastCalledWith('ok', null)
   })
 
@@ -107,14 +121,14 @@ describe('ticket service', () => {
     const snapshot = await tickets.refresh()
 
     expect(acli.calls[0]).toEqual(expect.arrayContaining(['--limit', String(TICKET_LIMIT + 1)]))
-    expect(snapshot.tickets).toHaveLength(TICKET_LIMIT)
-    expect(snapshot.limitReached).toBe(true)
+    expect(firstTab(snapshot).tickets).toHaveLength(TICKET_LIMIT)
+    expect(firstTab(snapshot).limitReached).toBe(true)
   })
 
   it('does not flag a list of exactly the limit', async () => {
     const { tickets } = service(fakeAcli({ search: { stdout: issues(TICKET_LIMIT) } }))
 
-    expect((await tickets.refresh()).limitReached).toBe(false)
+    expect(firstTab(await tickets.refresh()).limitReached).toBe(false)
   })
 
   it('keeps a logged-out state through an ordinary failure', async () => {
@@ -123,7 +137,9 @@ describe('ticket service', () => {
     await tickets.refresh()
     result = { timedOut: true, exitCode: -1 }
 
-    expect(await tickets.refresh()).toMatchObject({ health: 'loggedOut', error: expect.stringContaining('30 seconds') })
+    const snapshot = await tickets.refresh()
+    expect(snapshot.health).toBe('loggedOut')
+    expect(firstTab(snapshot).error).toContain('30 seconds')
     expect(onHealth).toHaveBeenCalledTimes(1)
   })
 
@@ -134,9 +150,164 @@ describe('ticket service', () => {
     })
     const { tickets } = service(acli)
 
-    expect((await tickets.refresh()).tickets[0]!.url).toBe('https://example.atlassian.net/browse/ABC-12')
+    expect(firstTab(await tickets.refresh()).tickets[0]!.url).toBe('https://example.atlassian.net/browse/ABC-12')
     await tickets.refresh()
     expect(acli.calls.filter((args) => args[1] === 'auth')).toHaveLength(1)
+  })
+
+  describe('with more tabs', () => {
+    const replies: Record<string, object> = {
+      'my jql': SEARCH_OK,
+      'release jql': { stdout: JSON.stringify([searchFixture[2], searchFixture[0]]) },
+    }
+    const byJql = (args: string[]) => replies[args[args.indexOf('--jql') + 1]!] ?? { exitCode: 1, stderr: 'bad JQL' }
+
+    it('refreshes every tab in order with its own query', async () => {
+      const { tickets, tabs, acli } = service(fakeAcli({ search: byJql }))
+      tabs.insert('Release', 'release jql')
+
+      const snapshot = await tickets.refresh()
+
+      expect(searches(acli).map((args) => args[args.indexOf('--jql') + 1])).toEqual(['my jql', 'release jql'])
+      expect(snapshot.tabs.map((tab) => tab.tickets.map((ticket) => ticket.key))).toEqual([
+        ['ABC-12', 'ABC-40', 'ABC-77'],
+        ['ABC-77', 'ABC-12'],
+      ])
+    })
+
+    it('keeps the new list of a good tab when another tab has a bad query', async () => {
+      const { tickets, tabs } = service(fakeAcli({ search: byJql }))
+      tabs.insert('Warning', 'broken jql')
+      tabs.insert('Release', 'release jql')
+
+      const snapshot = await tickets.refresh()
+
+      expect(snapshot.tabs.map((tab) => [tab.name, tab.tickets.length, tab.error])).toEqual([
+        ['Mine', 3, null],
+        ['Warning', 0, 'bad JQL'],
+        ['Release', 2, null],
+      ])
+      expect(snapshot.health).toBe('ok')
+    })
+
+    it('stops at the first tab when acli is logged out', async () => {
+      const acli = fakeAcli({ search: LOGGED_OUT })
+      const { tickets, tabs } = service(acli)
+      tabs.insert('Release', 'release jql')
+
+      expect((await tickets.refresh()).health).toBe('loggedOut')
+      expect(searches(acli)).toHaveLength(1)
+    })
+
+    it('drops a result for a tab whose query changed during the refresh', async () => {
+      let release!: () => void
+      const gate = new Promise<void>((resolve) => (release = resolve))
+      const { tickets, tabs } = service(fakeAcli({ search: async (args) => (args.includes('my jql') && (await gate), byJql(args)) }))
+      const tab = tabs.list()[0]!
+
+      const refreshing = tickets.refresh()
+      await tickets.saveTab({ id: tab.id, name: 'Mine', jql: 'release jql' })
+      release()
+      const snapshot = await refreshing
+
+      expect(firstTab(snapshot).tickets.map((ticket) => ticket.key)).toEqual(['ABC-77', 'ABC-12'])
+    })
+
+    it('drops a result for a tab deleted during the refresh', async () => {
+      let release!: () => void
+      const gate = new Promise<void>((resolve) => (release = resolve))
+      const { tickets, tabs, db } = service(fakeAcli({ search: async (args) => (await gate, byJql(args)) }))
+
+      const refreshing = tickets.refresh()
+      tickets.deleteTab(tabs.list()[0]!.id)
+      release()
+
+      expect((await refreshing).tabs).toEqual([])
+      expect(db.prepare('SELECT COUNT(*) AS n FROM tab_tickets').all()).toEqual([{ n: 0 }])
+    })
+  })
+
+  describe('saving a tab', () => {
+    it('saves a new tab with its first list after the query runs', async () => {
+      const { tickets } = service()
+
+      const snapshot = await tickets.saveTab({ name: 'Release', jql: 'fixVersion in unreleasedVersions()' })
+
+      expect(snapshot.tabs[1]).toMatchObject({ name: 'Release', jql: 'fixVersion in unreleasedVersions()', refreshedAt: 1_000 })
+      expect(snapshot.tabs[1]!.tickets).toHaveLength(3)
+    })
+
+    it('saves nothing when the query fails', async () => {
+      const { tickets } = service(fakeAcli({ search: { exitCode: 1, stderr: "Error in the JQL Query: '=' unexpected" } }))
+
+      await expect(tickets.saveTab({ name: 'Broken', jql: 'status = = Done' })).rejects.toThrow("'=' unexpected")
+
+      expect(tickets.snapshot().tabs.map((tab) => tab.name)).toEqual(['Mine'])
+    })
+
+    it('renames a tab without calling acli', async () => {
+      const { tickets, tabs, acli } = service()
+      const tab = tabs.list()[0]!
+
+      const snapshot = await tickets.saveTab({ id: tab.id, name: 'Overdue', jql: tab.jql })
+
+      expect(snapshot.tabs.map((entry) => entry.name)).toEqual(['Overdue'])
+      expect(acli.calls).toHaveLength(0)
+    })
+
+    it('keeps the old query when a changed query fails', async () => {
+      const { tickets, tabs } = service(fakeAcli({ search: { exitCode: 1, stderr: 'bad JQL' } }))
+      const tab = tabs.list()[0]!
+
+      await expect(tickets.saveTab({ id: tab.id, name: 'Mine', jql: 'broken' })).rejects.toThrow('bad JQL')
+
+      expect(tabs.get(tab.id)!.jql).toBe('my jql')
+    })
+
+    it('rejects an edit of a tab deleted while its new query runs', async () => {
+      let release!: () => void
+      const gate = new Promise<void>((resolve) => (release = resolve))
+      const { tickets, tabs } = service(fakeAcli({ search: async () => (await gate, SEARCH_OK) }))
+      const tab = tabs.list()[0]!
+
+      const saving = tickets.saveTab({ id: tab.id, name: 'Mine', jql: 'new jql' })
+      tickets.deleteTab(tab.id)
+      release()
+
+      await expect(saving).rejects.toBeInstanceOf(TabNotFoundError)
+      expect(tickets.allTickets()).toEqual([])
+    })
+
+    it('clears a logged-out state when a new query runs', async () => {
+      let result: object = LOGGED_OUT
+      const { tickets, onHealth } = service(fakeAcli({ search: () => result }))
+      await tickets.refresh()
+      result = SEARCH_OK
+
+      expect((await tickets.saveTab({ name: 'Release', jql: 'q' })).health).toBe('ok')
+      expect(onHealth).toHaveBeenLastCalledWith('ok', null)
+    })
+
+    it('reports a logged-out acli found while saving', async () => {
+      const { tickets, onHealth } = service(fakeAcli({ search: LOGGED_OUT }))
+
+      await expect(tickets.saveTab({ name: 'Release', jql: 'q' })).rejects.toThrow('acli jira auth login')
+
+      expect(tickets.snapshot().health).toBe('loggedOut')
+      expect(onHealth).toHaveBeenCalledWith('loggedOut', expect.stringContaining('acli jira auth login'))
+    })
+
+    it('rejects an edit of a tab that does not exist', async () => {
+      await expect(service().tickets.saveTab({ id: 999, name: 'X', jql: 'q' })).rejects.toBeInstanceOf(TabNotFoundError)
+    })
+  })
+
+  it('lists the tickets of all tabs once each', async () => {
+    const { tickets, tabs } = service()
+    tabs.insert('Same query', 'my jql')
+    await tickets.refresh()
+
+    expect(tickets.allTickets().map((ticket) => ticket.key)).toEqual(['ABC-12', 'ABC-40', 'ABC-77'])
   })
 
   it('reads one ticket with its description', async () => {
@@ -171,12 +342,12 @@ describe('ticket service', () => {
   })
 
   it('reports a stored logged-out state again after a plugin reload', async () => {
-    const db = migratedDatabase()
     const acli = fakeAcli({ search: LOGGED_OUT })
-    await createTicketService({ db, acli: acli.runner, readJql: async () => 'jql', now: () => 1 }).refresh()
+    const { db } = service(acli)
+    await service(acli, vi.fn(), () => 1, db).tickets.refresh()
     const onHealth = vi.fn()
 
-    await createTicketService({ db, acli: acli.runner, readJql: async () => 'jql', now: () => 2, onHealth }).refresh()
+    await service(acli, onHealth, () => 2, db).tickets.refresh()
 
     expect(onHealth).toHaveBeenCalledWith('loggedOut', expect.stringContaining('acli jira auth login'))
   })

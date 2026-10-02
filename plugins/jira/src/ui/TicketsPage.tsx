@@ -5,14 +5,17 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import { INSTALL_HINT, LOGIN_HINT } from "../acliErrors";
-import type { rpcContract, TicketList } from "../rpc";
+import type { rpcContract, TicketList, TicketTab } from "../rpc";
 import { TICKET_LIMIT } from "../tickets";
 import { errorMessage } from "../errorMessage";
 import { formatRefreshTime } from "./format";
 import { StartThreadDialog } from "./StartThreadDialog";
+import { DeleteTabDialog, TabDialog } from "./TabDialog";
 import { usePolled } from "./usePolled";
 
-type TicketRow = TicketList["tickets"][number];
+type TicketRow = TicketTab["tickets"][number];
+
+type TabAction = { kind: "add" } | { kind: "edit" | "delete"; tab: TicketTab };
 
 const STATUS_GROUPS = [
   { category: "indeterminate", title: "In progress", dot: "bg-sky-500", pill: "bg-sky-500/12 text-sky-600 dark:text-sky-400" },
@@ -56,14 +59,14 @@ function Banner({ tone, children }: { tone: "warning" | "error"; children: React
   );
 }
 
-function HealthBanner({ list }: { list: TicketList }) {
-  if (list.health === "missing") return <Banner tone="warning">acli is not installed. {INSTALL_HINT}</Banner>;
-  if (list.health === "loggedOut") return <Banner tone="warning">acli is not logged in to Jira. {LOGIN_HINT}</Banner>;
-  if (!list.error) return null;
+function HealthBanner({ health, tab }: { health: TicketList["health"]; tab: TicketTab }) {
+  if (health === "missing") return <Banner tone="warning">acli is not installed. {INSTALL_HINT}</Banner>;
+  if (health === "loggedOut") return <Banner tone="warning">acli is not logged in to Jira. {LOGIN_HINT}</Banner>;
+  if (!tab.error) return null;
   return (
     <Banner tone="error">
-      Refresh failed: {list.error}
-      {list.refreshedAt !== null ? ` Showing the list from ${formatRefreshTime(list.refreshedAt)}.` : null}
+      Refresh failed: {tab.error}
+      {tab.refreshedAt !== null ? ` Showing the list from ${formatRefreshTime(tab.refreshedAt)}.` : null}
     </Banner>
   );
 }
@@ -166,6 +169,88 @@ function TicketGroups({ tickets, onStart }: { tickets: TicketRow[]; onStart(tick
   );
 }
 
+function tabLabel(tab: TicketTab): string {
+  return tab.refreshedAt === null ? tab.name : `${tab.name} (${tab.tickets.length})`;
+}
+
+function TabBar({
+  tabs,
+  selected,
+  onSelect,
+  onEdit,
+  onDelete,
+}: {
+  tabs: TicketTab[];
+  selected: TicketTab;
+  onSelect(tab: TicketTab): void;
+  onEdit(): void;
+  onDelete(): void;
+}) {
+  return (
+    <div className="flex items-center gap-2 border-b border-border">
+      <div role="tablist" aria-label="Ticket tabs" className="flex min-w-0 flex-1 gap-1 overflow-x-auto">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={tab.id === selected.id}
+            className={cn(
+              "-mb-px shrink-0 cursor-pointer border-b-2 px-3 py-2 text-sm whitespace-nowrap transition-colors",
+              tab.id === selected.id
+                ? "border-primary font-medium text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground",
+            )}
+            onClick={() => onSelect(tab)}
+          >
+            {tabLabel(tab)}
+          </button>
+        ))}
+      </div>
+      <Button size="sm" variant="ghost" aria-label="Edit tab" onClick={onEdit}>
+        <Icon name="Edit" aria-hidden />
+      </Button>
+      <Button size="sm" variant="ghost" aria-label="Delete tab" onClick={onDelete}>
+        <Icon name="Trash2" aria-hidden />
+      </Button>
+    </div>
+  );
+}
+
+function TabPanel({ tab, health, onStart }: { tab: TicketTab; health: TicketList["health"]; onStart(ticket: TicketRow): void }) {
+  return (
+    <div role="tabpanel" aria-label={tab.name} className="flex flex-col gap-5">
+      <HealthBanner health={health} tab={tab} />
+      {tab.tickets.length === 0 && tab.refreshedAt !== null ? (
+        <EmptyState icon="CircleCheck">No tickets match the query.</EmptyState>
+      ) : null}
+      {tab.tickets.length === 0 && tab.refreshedAt === null && health === "ok" && !tab.error ? (
+        <EmptyState icon="Spinner">Reading tickets from Jira…</EmptyState>
+      ) : null}
+      {tab.tickets.length > 0 ? <TicketGroups tickets={tab.tickets} onStart={onStart} /> : null}
+      {tab.limitReached ? (
+        <p className="text-center text-xs text-muted-foreground">
+          Showing the first {TICKET_LIMIT} tickets. Edit the tab to narrow the query.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function NoTabs({ onAdd }: { onAdd(): void }) {
+  return (
+    <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border px-6 py-12 text-center">
+      <p role="status" className="m-0 text-sm text-muted-foreground">
+        No tabs yet. Add a tab with a JQL query to see its tickets.
+      </p>
+      <Button size="sm" onClick={onAdd}>
+        <Icon name="Plus" aria-hidden />
+        Add tab
+      </Button>
+    </div>
+  );
+}
+
 export function TicketsPage() {
   const rpc = useRpc<typeof rpcContract>();
   const load = useCallback(() => rpc.call("tickets", null), [rpc]);
@@ -173,7 +258,10 @@ export function TicketsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [starting, setStarting] = useState<TicketRow | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [action, setAction] = useState<TabAction | null>(null);
   const busy = refreshing || Boolean(list?.refreshing);
+  const selected = list ? (list.tabs.find((tab) => tab.id === selectedId) ?? list.tabs[0] ?? null) : null;
 
   const refresh = async () => {
     setRefreshing(true);
@@ -187,6 +275,8 @@ export function TicketsPage() {
     }
   };
 
+  const closeAction = (open: boolean) => !open && setAction(null);
+
   return (
     <div className="h-full min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
@@ -196,37 +286,51 @@ export function TicketsPage() {
               <Icon name="jira/jira" fallback="ListTodo" className="size-5" aria-hidden />
             </div>
             <div className="flex flex-col">
-              <h1 className="text-base font-semibold leading-tight">My tickets</h1>
+              <h1 className="text-base font-semibold leading-tight">Jira tickets</h1>
               <span className="text-xs text-muted-foreground">
-                {list?.refreshedAt ? `Refreshed ${formatRefreshTime(list.refreshedAt)}` : "Assigned to you in Jira"}
+                {selected?.refreshedAt ? `Refreshed ${formatRefreshTime(selected.refreshedAt)}` : "Tickets from your Jira queries"}
               </span>
             </div>
           </div>
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => void refresh()}>
-            <Icon name="ArrowReloadHorizontal" className={cn(busy && "animate-spin")} aria-hidden />
-            {busy ? "Refreshing…" : "Refresh"}
-          </Button>
+          <div className="flex gap-2">
+            {list && list.tabs.length > 0 ? (
+              <Button size="sm" variant="outline" onClick={() => setAction({ kind: "add" })}>
+                <Icon name="Plus" aria-hidden />
+                Add tab
+              </Button>
+            ) : null}
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => void refresh()}>
+              <Icon name="ArrowReloadHorizontal" className={cn(busy && "animate-spin")} aria-hidden />
+              {busy ? "Refreshing…" : "Refresh"}
+            </Button>
+          </div>
         </header>
         {refreshError || (loadError && !list) ? <Banner tone="error">{refreshError ?? loadError}</Banner> : null}
-        {!list ? (
-          <EmptyState icon="Spinner">Loading tickets…</EmptyState>
-        ) : (
+        {!list ? <EmptyState icon="Spinner">Loading tickets…</EmptyState> : null}
+        {list && !selected ? <NoTabs onAdd={() => setAction({ kind: "add" })} /> : null}
+        {list && selected ? (
           <>
-            <HealthBanner list={list} />
-            {list.tickets.length === 0 && list.refreshedAt !== null ? (
-              <EmptyState icon="CircleCheck">No tickets match the query.</EmptyState>
-            ) : null}
-            {list.tickets.length === 0 && list.refreshedAt === null && list.health === "ok" && !list.error ? (
-              <EmptyState icon="Spinner">Reading tickets from Jira…</EmptyState>
-            ) : null}
-            {list.tickets.length > 0 ? <TicketGroups tickets={list.tickets} onStart={setStarting} /> : null}
-            {list.limitReached ? (
-              <p className="text-center text-xs text-muted-foreground">
-                Showing the first {TICKET_LIMIT} tickets. Narrow the query in the plugin settings to see the rest.
-              </p>
-            ) : null}
+            <TabBar
+              tabs={list.tabs}
+              selected={selected}
+              onSelect={(tab) => setSelectedId(tab.id)}
+              onEdit={() => setAction({ kind: "edit", tab: selected })}
+              onDelete={() => setAction({ kind: "delete", tab: selected })}
+            />
+            <TabPanel tab={selected} health={list.health} onStart={setStarting} />
           </>
-        )}
+        ) : null}
+        {action?.kind === "add" ? (
+          <TabDialog
+            onSaved={(next) => {
+              setList(next);
+              setSelectedId(next.tabs.at(-1)?.id ?? null);
+            }}
+            onOpenChange={closeAction}
+          />
+        ) : null}
+        {action?.kind === "edit" ? <TabDialog tab={action.tab} onSaved={setList} onOpenChange={closeAction} /> : null}
+        {action?.kind === "delete" ? <DeleteTabDialog tab={action.tab} onDeleted={setList} onOpenChange={closeAction} /> : null}
         {starting ? (
           <StartThreadDialog
             ticketKey={starting.key}
