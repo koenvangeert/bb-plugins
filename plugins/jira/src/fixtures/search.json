@@ -1,0 +1,131 @@
+[
+  {
+    "changelog": null,
+    "editmeta": null,
+    "expand": "renderedFields,names,schema,operations,editmeta,changelog,versionedRepresentations",
+    "fields": {
+      "issuetype": {
+        "avatarId": 12013,
+        "description": "Created by Jira Software - do not edit or delete. Issue type for a user story.",
+        "hierarchyLevel": 0,
+        "iconUrl": "https://jira-prod-us-00-as-0.prod.atl-paas.net/rest/api/2/universal_avatar/view/type/issuetype/avatar/12013?size=medium",
+        "id": "9",
+        "name": "User Story",
+        "self": "https://jira-prod-us-00-as-0.prod.atl-paas.net/rest/api/3/issuetype/9",
+        "subtask": false
+      },
+      "status": {
+        "description": "",
+        "iconUrl": "https://jira-prod-us-00-as-0.prod.atl-paas.net/images/icons/statuses/inprogress.png",
+        "id": "3",
+        "name": "In Progress",
+        "self": "https://jira-prod-us-00-as-0.prod.atl-paas.net/rest/api/3/status/3",
+        "statusCategory": {
+          "colorName": "yellow",
+          "id": 4,
+          "key": "indeterminate",
+          "name": "In Progress",
+          "self": "https://jira-prod-us-00-as-0.prod.atl-paas.net/rest/api/3/statuscategory/4"
+        }
+      },
+      "summary": "Fix login"
+    },
+    "fieldsToInclude": null,
+    "id": "10012",
+    "key": "ABC-12",
+    "names": null,
+    "operations": null,
+    "properties": null,
+    "renderedFields": null,
+    "schema": null,
+    "self": "https://jira-prod-us-00-as-0.prod.atl-paas.net/rest/api/3/issue/10012",
+    "transitions": null,
+    "versionedRepresentations": null
+  },
+  {
+    "changelog": null,
+    "editmeta": null,
+    "expand": "renderedFields,names,schema,operations,editmeta,changelog,versionedRepresentations",
+    "fields": {
+      "issuetype": {
+        "avatarId": 12013,
+        "description": "Created by Jira Software - do not edit or delete. Issue type for a user story.",
+        "hierarchyLevel": 0,
+        "iconUrl": "https://jira-prod-us-00-as-0.prod.atl-paas.net/rest/api/2/universal_avatar/view/type/issuetype/avatar/12013?size=medium",
+        "id": "9",
+        "name": "User Story",
+        "self": "https://jira-prod-us-00-as-0.prod.atl-paas.net/rest/api/3/issuetype/9",
+        "subtask": false
+      },
+      "status": {
+        "description": "",
+        "iconUrl": "https://jira-prod-us-00-as-0.prod.atl-paas.net/images/icons/statuses/information.png",
+        "id": "10001",
+        "name": "In Review",
+        "self": "https://jira-prod-us-00-as-0.prod.atl-paas.net/rest/api/3/status/10001",
+        "statusCategory": {
+          "colorName": "yellow",
+          "id": 4,
+          "key": "indeterminate",
+          "name": "In Progress",
+          "self": "https://jira-prod-us-00-as-0.prod.atl-paas.net/rest/api/3/statuscategory/4"
+        }
+      },
+      "summary": "Add export"
+    },
+    "fieldsToInclude": null,
+    "id": "10040",
+    "key": "ABC-40",
+    "names": null,
+    "operations": null,
+    "properties": null,
+    "renderedFields": null,
+    "schema": null,
+    "self": "https://jira-prod-us-00-as-0.prod.atl-paas.net/rest/api/3/issue/10040",
+    "transitions": null,
+    "versionedRepresentations": null
+  },
+  {
+    "changelog": null,
+    "editmeta": null,
+    "expand": "renderedFields,names,schema,operations,editmeta,changelog,versionedRepresentations",
+    "fields": {
+      "issuetype": {
+        "avatarId": 12003,
+        "description": "A problem or error.",
+        "hierarchyLevel": 0,
+        "iconUrl": "https://jira-prod-us-00-as-0.prod.atl-paas.net/rest/api/2/universal_avatar/view/type/issuetype/avatar/12003?size=medium",
+        "id": "1",
+        "name": "Bug",
+        "self": "https://jira-prod-us-00-as-0.prod.atl-paas.net/rest/api/3/issuetype/1",
+        "subtask": false
+      },
+      "status": {
+        "description": "",
+        "iconUrl": "https://jira-prod-us-00-as-0.prod.atl-paas.net/images/icons/statuses/information.png",
+        "id": "10001",
+        "name": "In Review",
+        "self": "https://jira-prod-us-00-as-0.prod.atl-paas.net/rest/api/3/status/10001",
+        "statusCategory": {
+          "colorName": "yellow",
+          "id": 4,
+          "key": "indeterminate",
+          "name": "In Progress",
+          "self": "https://jira-prod-us-00-as-0.prod.atl-paas.net/rest/api/3/statuscategory/4"
+        }
+      },
+      "summary": "Blank page instead of an error message"
+    },
+    "fieldsToInclude": null,
+    "id": "10077",
+    "key": "ABC-77",
+    "names": null,
+    "operations": null,
+    "properties": null,
+    "renderedFields": null,
+    "schema": null,
+    "self": "https://jira-prod-us-00-as-0.prod.atl-paas.net/rest/api/3/issue/10077",
+    "transitions": null,
+    "versionedRepresentations": null
+  }
+]

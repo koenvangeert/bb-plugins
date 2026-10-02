@@ -1,0 +1,105 @@
+{
+  "changelog": null,
+  "editmeta": null,
+  "expand": "renderedFields,names,schema,operations,editmeta,changelog,versionedRepresentations",
+  "fields": {
+    "description": {
+      "content": [
+        {
+          "attrs": {
+            "localId": "bbbbbbbbbbbb"
+          },
+          "content": [
+            {
+              "text": "Login fails after a password reset:",
+              "type": "text"
+            },
+            {
+              "type": "hardBreak"
+            },
+            {
+              "attrs": {
+                "localId": "aaaaaaaaaaaa",
+                "url": "https://www.figma.com/design/EXAMPLE/Login"
+              },
+              "type": "inlineCard"
+            },
+            {
+              "text": " ",
+              "type": "text"
+            },
+            {
+              "type": "hardBreak"
+            },
+            {
+              "text": "Reuse the existing login form.",
+              "type": "text"
+            }
+          ],
+          "type": "paragraph"
+        },
+        {
+          "attrs": {
+            "layout": "align-start",
+            "localId": "cccccccccccc",
+            "width": 1024,
+            "widthType": "pixel"
+          },
+          "content": [
+            {
+              "attrs": {
+                "alt": "screenshot.png",
+                "collection": "",
+                "height": 1744,
+                "id": "00000000-0000-0000-0000-000000000000",
+                "localId": "dddddddddddd",
+                "type": "file",
+                "width": 2370
+              },
+              "type": "media"
+            }
+          ],
+          "type": "mediaSingle"
+        }
+      ],
+      "type": "doc",
+      "version": 1
+    },
+    "issuetype": {
+      "avatarId": 12013,
+      "description": "Created by Jira Software - do not edit or delete. Issue type for a user story.",
+      "hierarchyLevel": 0,
+      "iconUrl": "https://jira-prod-us-00-as-0.prod.atl-paas.net/rest/api/2/universal_avatar/view/type/issuetype/avatar/12013?size=medium",
+      "id": "9",
+      "name": "User Story",
+      "self": "https://jira-prod-us-00-as-0.prod.atl-paas.net/rest/api/3/issuetype/9",
+      "subtask": false
+    },
+    "status": {
+      "description": "This work item is being actively worked on at the moment by the assignee.",
+      "iconUrl": "https://jira-prod-us-00-as-0.prod.atl-paas.net/images/icons/statuses/inprogress.png",
+      "id": "3",
+      "name": "In Progress",
+      "self": "https://jira-prod-us-00-as-0.prod.atl-paas.net/rest/api/3/status/3",
+      "statusCategory": {
+        "colorName": "yellow",
+        "id": 4,
+        "key": "indeterminate",
+        "name": "In Progress",
+        "self": "https://jira-prod-us-00-as-0.prod.atl-paas.net/rest/api/3/statuscategory/4"
+      }
+    },
+    "summary": "Fix login"
+  },
+  "fieldsToInclude": null,
+  "id": "10012",
+  "key": "ABC-12",
+  "names": null,
+  "operations": null,
+  "properties": null,
+  "renderedFields": null,
+  "schema": null,
+  "self": "https://jira-prod-us-00-as-0.prod.atl-paas.net/rest/api/3/issue/10012",
+  "transitions": null,
+  "versionedRepresentations": null
+}
