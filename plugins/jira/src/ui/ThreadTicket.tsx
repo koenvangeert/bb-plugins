@@ -33,6 +33,7 @@ export function ThreadTicket({ threadId, isCompactViewport }: PluginThreadHeader
                 issueKey={link.issueKey}
                 ticket={link.ticket}
                 error={link.error}
+                onClose={() => setOpen(false)}
                 onUnlink={async () => {
                   await rpc.call("unlink", { threadId });
                   await refresh();
@@ -59,11 +60,13 @@ function LinkedTicket({
   issueKey,
   ticket,
   error: readError,
+  onClose,
   onUnlink,
 }: {
   issueKey: string;
   ticket: ThreadLinkResult["ticket"];
   error: string | null;
+  onClose(): void;
   onUnlink(): Promise<void>;
 }) {
   const navigate = useBbNavigate();
@@ -85,7 +88,13 @@ function LinkedTicket({
       ) : null}
       <div className="flex gap-2">
         {ticket?.url ? (
-          <Button size="sm" onClick={() => navigate.openUrl(ticket.url)}>
+          <Button
+            size="sm"
+            onClick={() => {
+              navigate.openUrl(ticket.url);
+              onClose();
+            }}
+          >
             Open in Jira
           </Button>
         ) : null}
