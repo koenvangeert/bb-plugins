@@ -203,7 +203,7 @@ describe("thread header", () => {
     expect(slot.container.textContent).toBe("");
   });
 
-  it("shows the linked ticket key and status, and its details on click", async () => {
+  it("shows the linked ticket key and status, and its details on click, and closes after opening Jira", async () => {
     const slot = renderHeader({ threadLink: () => linked });
 
     const target3 = await slot.findByRole("button", { name: "ABC-12 · In Progress" });
@@ -212,6 +212,7 @@ describe("thread header", () => {
     expect(await screen.findByText("ABC-12: Fix login")).toBeTruthy();
     await act(async () => screen.getByRole("button", { name: "Open in Jira" }).click());
     expect(slot.inspection.navigateCalls).toContainEqual(expect.objectContaining({ url: "https://example.atlassian.net/browse/ABC-12" }));
+    expect(screen.queryByText("ABC-12: Fix login")).toBeNull();
   });
 
   it("keeps the key and marks the status unknown when the ticket cannot be read", async () => {

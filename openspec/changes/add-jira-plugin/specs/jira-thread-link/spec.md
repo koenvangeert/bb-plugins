@@ -43,6 +43,10 @@ On a linked thread, the thread header SHALL show the ticket key and its status. 
 - **WHEN** the user opens a thread linked to `ABC-12` with status "In Progress"
 - **THEN** the header shows `ABC-12 . In Progress`
 
+#### Scenario: Open in Jira closes the dialog
+- **WHEN** the user clicks "Open in Jira" in the ticket dialog
+- **THEN** the ticket opens in the browser and the dialog closes
+
 #### Scenario: Ticket not in the cached list
 - **WHEN** the linked ticket is not in the current ticket list (for example, it is done or assigned to someone else)
 - **THEN** the plugin reads that one ticket through `acli` and the header shows its current status
