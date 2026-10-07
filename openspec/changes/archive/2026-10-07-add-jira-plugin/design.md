@@ -87,7 +87,17 @@ Port OpenForge `jira_runtime/adf.rs` to `src/adf.ts`, with its tests. The prompt
 
 `link` with a key not in the cache calls `ticket(key)` first, and fails if that fails.
 
-### 10. Frontend
+### 10. Permission mode of a started thread
+
+`startThread` reads `bb.sdk.projects.defaultExecutionOptions({ projectId })` and spawns with `permissionMode: defaults?.permissionMode ?? 'full'` and `executionInputSources: { permissionMode: 'explicit' }`.
+
+- The composer falls back to a remembered client preference when the project has no stored default. The plugin server cannot read that preference. Without a value, `spawn` falls back to the provider default, which is sandboxed. The user wants Jira threads to have full access, so `full` is the fallback.
+- When a project has a stored default, the server already uses it. Reading it here only keeps that behavior when we send a value.
+- The `explicit` source is necessary: without a source, the server can drop a requested execution value and use its own default.
+
+Alternative: embed the host `NewThreadComposer` in the Start dialog, so its pickers set the mode. Rejected for now: it is the only exact match with the composer, but it replaces the dialog.
+
+### 11. Frontend
 
 - `navPanel` "Jira": refresh state line, health banner, ticket rows, thread chips, "Start thread".
 - Start dialog: project select (from `projects()`), textarea prefilled from `ticket(key)`, Start button disabled until a project is picked. On success, `useBbNavigate().toThread(id)`.

@@ -16,7 +16,7 @@ interface FakeThread {
   metadata: Record<string, unknown>
 }
 
-function fakeSdk() {
+function fakeSdk(projectDefaults: Record<string, { permissionMode: 'accept-edits' | 'auto' | 'full' }> = {}) {
   const threads = new Map<string, FakeThread>()
   const spawned: Parameters<ThreadLinkSdk['threads']['spawn']>[0][] = []
   const addThread = (id: string, overrides: Partial<FakeThread> = {}) =>
@@ -27,6 +27,9 @@ function fakeSdk() {
     return thread
   }
   const sdk: ThreadLinkSdk = {
+    projects: {
+      defaultExecutionOptions: async ({ projectId }) => projectDefaults[projectId] ?? null,
+    },
     threads: {
       get: async ({ threadId }) => find(threadId),
       getPluginMetadata: async ({ threadId }) => ({ ...find(threadId).metadata }),
@@ -51,12 +54,12 @@ const KEYS = new Set(['ABC-12', 'ABC-40', 'XYZ-7'])
 
 const XYZ_VIEW = JSON.stringify({ ...viewFixture, key: 'XYZ-7', fields: { ...viewFixture.fields, summary: 'Other team ticket' } })
 
-async function setup(view: object = { stdout: XYZ_VIEW }) {
+async function setup(view: object = { stdout: XYZ_VIEW }, projectDefaults: Parameters<typeof fakeSdk>[0] = {}) {
   const db = migratedDatabase()
   const acli = fakeAcli({ search: { stdout: JSON.stringify(searchFixture) }, view })
   const tickets = createTicketService({ db, acli: acli.runner, readJql: async () => 'jql', now: () => 1 })
   await tickets.refresh()
-  const bb = fakeSdk()
+  const bb = fakeSdk(projectDefaults)
   bb.addThread('thr_1')
   bb.addThread('thr_2')
   return { ...bb, acli, links: createThreadLinks({ db, sdk: bb.sdk, tickets }) }
@@ -242,10 +245,20 @@ describe('thread links', () => {
         prompt: 'Do the export',
         title: 'ABC-40: Add export',
         pluginMetadata: { issueKey: 'ABC-40' },
+        permissionMode: 'full',
+        executionInputSources: { permissionMode: 'explicit' },
       },
     ])
     expect((await links.threadLink(threadId)).issueKey).toBe('ABC-40')
     expect((await links.linkedThreads(KEYS))['ABC-40']!.map((thread) => thread.threadId)).toEqual([threadId])
+  })
+
+  it("starts a thread with the project's default permission mode", async () => {
+    const { links, spawned } = await setup(undefined, { 'P-1': { permissionMode: 'accept-edits' } })
+
+    await links.startThread('P-1', 'ABC-40', 'Do the export')
+
+    expect(spawned[0]).toMatchObject({ permissionMode: 'accept-edits', executionInputSources: { permissionMode: 'explicit' } })
   })
 })
 

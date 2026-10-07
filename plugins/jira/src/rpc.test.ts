@@ -13,6 +13,7 @@ function handlers() {
   const tickets = createTicketService({ db, acli: acli.runner, readJql: async () => 'jql', now: () => 7 })
   const metadata: Record<string, Record<string, unknown>> = { thr_1: {} }
   const sdk: ThreadLinkSdk = {
+    projects: { defaultExecutionOptions: async () => null },
     threads: {
       get: async ({ threadId }) => ({ id: threadId, title: 'Fix it', titleFallback: null, archivedAt: null, deletedAt: null }),
       getPluginMetadata: async ({ threadId }) => ({ ...metadata[threadId] }),

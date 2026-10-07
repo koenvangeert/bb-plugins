@@ -3,7 +3,12 @@ import { errorMessage } from './errorMessage'
 import { InvalidKeyError, isTicketKey, type Ticket } from './tickets'
 import type { TicketService } from './ticketService'
 
+type PermissionMode = 'accept-edits' | 'auto' | 'full'
+
 export interface ThreadLinkSdk {
+  projects: {
+    defaultExecutionOptions(args: { projectId: string }): Promise<{ permissionMode: PermissionMode } | null>
+  }
   threads: {
     get(args: { threadId: string }): Promise<{
       id: string
@@ -20,6 +25,8 @@ export interface ThreadLinkSdk {
       prompt: string
       title: string
       pluginMetadata: { issueKey: string }
+      permissionMode: PermissionMode
+      executionInputSources: { permissionMode: 'explicit' }
     }): Promise<{ id: string }>
   }
 }
@@ -93,12 +100,15 @@ export function createThreadLinks(options: { db: SqlDatabase; sdk: ThreadLinkSdk
     async startThread(projectId: string, issueKey: string, prompt: string): Promise<{ threadId: string }> {
       if (!isTicketKey(issueKey)) throw new InvalidKeyError(issueKey)
       const ticket = await resolveTicket(issueKey)
+      const defaults = await sdk.projects.defaultExecutionOptions({ projectId })
       const thread = await sdk.threads.spawn({
         projectId,
         environment: { type: 'project-default' },
         prompt,
         title: `${issueKey}: ${ticket.summary}`,
         pluginMetadata: { issueKey },
+        permissionMode: defaults?.permissionMode ?? 'full',
+        executionInputSources: { permissionMode: 'explicit' },
       })
       index(thread.id, issueKey)
       return { threadId: thread.id }
