@@ -32,4 +32,4 @@
 ## 5. Docs and live check
 
 - [x] 5.1 Write `plugins/claude-usage/README.md` and a `skills/` entry covering the setting, attribution limits, and price table updates, and verify both exist
-- [ ] 5.2 Install the plugin locally and verify: the dashboard totals match the OpenForge plugin on the same transcripts (within the opus-5-5 difference), this thread's header shows a figure, and the sidebar row shows today's amount
+- [x] 5.2 Install the plugin locally and verify: the dashboard totals match the OpenForge plugin on the same transcripts (within the opus-5-5 difference), this thread's header shows a figure, and the sidebar row shows today's amount
