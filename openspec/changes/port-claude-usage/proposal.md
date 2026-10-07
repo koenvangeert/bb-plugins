@@ -8,7 +8,7 @@ Claude Code bills through the API, and BB shows no dollar figure for that spend.
 - A background service indexes `~/.claude/projects/**/*.jsonl`, including subagent transcripts, and re-reads only changed files.
 - The index stores token counts and grows only. Dollars come from a price table at read time.
 - A sidebar page `Claude usage` shows spend today, 7 days, 30 days, all time, a 30-day daily chart by cost component, spend per project, top threads, and spend per model.
-- The sidebar row shows the 30-day figure.
+- The sidebar row shows today's figure.
 - The thread header shows the spend of the open thread.
 - Spend outside every BB project shows as "Outside BB".
 - A model with no price is excluded from totals and named in a banner.

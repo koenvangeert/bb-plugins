@@ -10,8 +10,8 @@ export function SidebarSpend() {
   const { value: dashboard } = usePolled(load);
   if (!dashboard || dashboard.indexing) return null;
   return (
-    <span className="text-xs tabular-nums text-muted-foreground" title="Claude Code spend over the last 30 days">
-      {formatMoney(dashboard.totals.last30Days.total)}
+    <span className="text-xs tabular-nums text-muted-foreground" title="Claude Code spend today">
+      {formatMoney(dashboard.totals.today.total)}
     </span>
   );
 }
