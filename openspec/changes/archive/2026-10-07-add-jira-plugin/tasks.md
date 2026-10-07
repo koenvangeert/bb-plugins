@@ -20,6 +20,7 @@
 - [x] 3.6 Add `startThread` (spawn with title `<KEY>: <summary>`, prompt, `pluginMetadata`, index row) and the prompt prefill builder, and verify tests for title, metadata, and prefill content
 - [x] 3.7 Add linked-thread resolution for the page (drop deleted and mismatched, mark archived) and the thread delete event handler, and verify tests for deleted, archived, and mismatched threads
 - [x] 3.8 Add the RPC contract and handlers from design decision 9 and verify a handler test for each method with a fake runner and a test database
+- [x] 3.9 Make `startThread` spawn with the project's default permission mode, else `full`, with an `explicit` source (design decision 10), and verify tests for a project default, a `null` default, and the source
 
 ## 4. Frontend
 
@@ -30,4 +31,4 @@
 
 ## 5. Integration
 
-- [ ] 5.1 Install the plugin with `bb plugin install ./plugins/jira`, and verify by hand: my tickets show, Start thread creates a linked thread that opens, the header chip shows status, link by typed key works, unlink works, and logging out of `acli` shows the login message
+- [x] 5.1 Install the plugin with `bb plugin install ./plugins/jira`, and verify by hand: my tickets show, Start thread creates a linked thread that opens, the header chip shows status, link by typed key works, unlink works, and logging out of `acli` shows the login message

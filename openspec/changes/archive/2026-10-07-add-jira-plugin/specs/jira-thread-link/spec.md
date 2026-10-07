@@ -36,6 +36,14 @@ A thread SHALL be linked to zero or one Jira ticket. A ticket MAY be linked to m
 - **WHEN** no project is picked
 - **THEN** the dialog cannot be confirmed
 
+#### Scenario: Permission mode from the project default
+- **WHEN** the user starts a thread in project `catalog`, and `catalog` has a stored default permission mode `accept-edits`
+- **THEN** the thread starts with permission mode `accept-edits`
+
+#### Scenario: Full access when the project has no default
+- **WHEN** the user starts a thread in a project with no stored default permission mode
+- **THEN** the thread starts with permission mode `full`, not the provider's sandboxed default
+
 ### Requirement: Thread header shows the linked ticket
 On a linked thread, the thread header SHALL show the ticket key and its status. Clicking it SHALL show the summary, an "Open in Jira" link, and an unlink control.
 
