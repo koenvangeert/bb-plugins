@@ -26,10 +26,10 @@
 
 - [x] 4.1 Build the dashboard `navPanel` (totals, project, thread, model breakdowns, lower-bound note, unpriced-model banner, rescan button, empty and indexing states, 1-minute refresh) and verify component tests for each state
 - [x] 4.2 Build the Chart.js daily chart with theme CSS variable colours and verify `dailyChartConfig` tests and a render test
-- [x] 4.3 Add the sidebar accessory with the 30-day figure and verify a component test
+- [x] 4.3 Add the sidebar accessory with today's figure and verify a component test
 - [x] 4.4 Add the thread header action with loading, no-spend, and amount states and verify a component test for each
 
 ## 5. Docs and live check
 
 - [x] 5.1 Write `plugins/claude-usage/README.md` and a `skills/` entry covering the setting, attribution limits, and price table updates, and verify both exist
-- [ ] 5.2 Install the plugin locally and verify: the dashboard totals match the OpenForge plugin on the same transcripts (within the opus-5-5 difference), this thread's header shows a figure, and the sidebar row shows the 30-day amount
+- [x] 5.2 Install the plugin locally and verify: the dashboard totals match the OpenForge plugin on the same transcripts (within the opus-5-5 difference), this thread's header shows a figure, and the sidebar row shows today's amount

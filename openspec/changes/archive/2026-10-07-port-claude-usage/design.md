@@ -67,7 +67,7 @@ Projects load with `includePersonal`, so threads in the Personal project show it
 | Surface | BB slot |
 | --- | --- |
 | Dashboard page | `navPanel` (app-level, no project) |
-| 30-day figure on the row | `experimental_sidebarAccessory` on that panel |
+| Today's figure on the row | `experimental_sidebarAccessory` on that panel |
 | Thread figure | `experimental_threadHeaderAction` |
 | Data | `bb.rpc` contract: `dashboard`, `threadSpend`, `rescan` |
 

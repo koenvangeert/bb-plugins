@@ -35,14 +35,14 @@ The page SHALL state that figures are a lower bound on real spend, because trans
 - **WHEN** the dashboard renders
 - **THEN** it shows a note that figures may be lower than actual spend
 
-### Requirement: Sidebar row shows the 30-day figure
+### Requirement: Sidebar row shows today's figure
 
-The `Claude usage` sidebar row SHALL show the 30-day spend.
+The `Claude usage` sidebar row SHALL show the spend since local midnight today. Its tooltip SHALL say the figure is for today.
 
 #### Scenario: Sidebar figure
 
-- **WHEN** the 30-day spend is $42.10
-- **THEN** the sidebar row shows `$42.10`
+- **WHEN** today's spend is $3.20 and the 30-day spend is $42.10
+- **THEN** the sidebar row shows `$3.20`
 
 ### Requirement: Thread shows its spend
 

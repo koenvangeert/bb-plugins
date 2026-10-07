@@ -127,10 +127,14 @@ describe("Claude usage page", () => {
 describe("sidebar row", () => {
   const accessory = () => ({ component: app.navPanels[0]!.experimental_sidebarAccessory! });
 
-  it("shows the 30-day spend", async () => {
-    const slot = renderSlot(accessory(), {}, { rpc: { dashboard: () => dashboardOf([response()]) } });
+  it("shows today's spend, not earlier days", async () => {
+    const threeDaysAgo = response({ messageId: "msg_2", timestamp: NOW - 3 * 24 * 60 * 60 * 1000 });
+    const slot = renderSlot(accessory(), {}, {
+      rpc: { dashboard: () => dashboardOf([response(), threeDaysAgo]) },
+    });
 
     expect(await slot.findByText("$25.00")).toBeTruthy();
+    expect(slot.queryByText("$50.00")).toBeNull();
   });
 
   it("shows nothing while the first scan runs", async () => {
