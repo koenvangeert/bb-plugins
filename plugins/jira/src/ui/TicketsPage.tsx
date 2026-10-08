@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import type { ReactNode } from "react";
-import { useBbNavigate, useRpc } from "@get-bb/plugin-sdk/app";
+import { experimental_useSidebarThreadPullRequest, useBbNavigate, useRpc } from "@get-bb/plugin-sdk/app";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
@@ -86,6 +86,49 @@ function EmptyState({ icon, children }: { icon: string; children: ReactNode }) {
   );
 }
 
+const PULL_REQUEST_STATES = {
+  open: { icon: "GitPullRequest", className: "border-emerald-500/30 text-emerald-600 dark:text-emerald-400" },
+  draft: { icon: "GitPullRequestDraft", className: "border-border text-muted-foreground" },
+  merged: { icon: "GitMerge", className: "border-violet-500/30 text-violet-600 dark:text-violet-400" },
+  closed: { icon: "GitPullRequestClosed", className: "border-red-500/30 text-red-600 dark:text-red-400" },
+} as const;
+
+function ThreadChip({ thread }: { thread: TicketRow["threads"][number] }) {
+  const navigate = useBbNavigate();
+  const { pullRequest } = experimental_useSidebarThreadPullRequest(thread.threadId);
+  const prState = pullRequest ? PULL_REQUEST_STATES[pullRequest.state] : null;
+  return (
+    <li className="inline-flex max-w-full items-center gap-1">
+      <button
+        type="button"
+        className={cn(
+          "inline-flex max-w-72 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-background px-2 py-0.5 text-xs hover:bg-state-hover",
+          thread.archived && "opacity-60",
+        )}
+        onClick={() => navigate.toThread(thread.threadId)}
+      >
+        <Icon name="MessageSquare" className="size-3 text-muted-foreground" aria-hidden />
+        <span className="truncate">{thread.title}</span>
+        {thread.archived ? <span className="text-muted-foreground">(archived)</span> : null}
+      </button>
+      {pullRequest && prState ? (
+        <button
+          type="button"
+          className={cn(
+            "inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-md border bg-background px-1.5 py-0.5 font-mono text-xs hover:bg-state-hover",
+            prState.className,
+          )}
+          title={pullRequest.title}
+          aria-label={`PR #${pullRequest.number} (${pullRequest.state})`}
+          onClick={() => navigate.openUrl(pullRequest.url)}
+        >
+          <Icon name={prState.icon} className="size-3" aria-hidden />#{pullRequest.number}
+        </button>
+      ) : null}
+    </li>
+  );
+}
+
 function TicketItem({ ticket, onStart }: { ticket: TicketRow; onStart(): void }) {
   const navigate = useBbNavigate();
   const type = issueTypeIcon(ticket.issueType);
@@ -116,20 +159,7 @@ function TicketItem({ ticket, onStart }: { ticket: TicketRow; onStart(): void })
         {ticket.threads.length > 0 ? (
           <ul aria-label={`Threads for ${ticket.key}`} className="m-0 flex list-none flex-wrap gap-1.5 p-0 pt-0.5">
             {ticket.threads.map((thread) => (
-              <li key={thread.threadId}>
-                <button
-                  type="button"
-                  className={cn(
-                    "inline-flex max-w-72 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-background px-2 py-0.5 text-xs hover:bg-state-hover",
-                    thread.archived && "opacity-60",
-                  )}
-                  onClick={() => navigate.toThread(thread.threadId)}
-                >
-                  <Icon name="MessageSquare" className="size-3 text-muted-foreground" aria-hidden />
-                  <span className="truncate">{thread.title}</span>
-                  {thread.archived ? <span className="text-muted-foreground">(archived)</span> : null}
-                </button>
-              </li>
+              <ThreadChip key={thread.threadId} thread={thread} />
             ))}
           </ul>
         ) : null}

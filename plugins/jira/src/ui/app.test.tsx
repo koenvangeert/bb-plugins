@@ -63,9 +63,19 @@ beforeAll(async () => {
 
 afterEach(() => cleanup());
 
-function renderPage(rpc: RpcHandlers) {
-  return renderSlot(app.navPanels[0]!, { subPath: "" }, { rpc, openUrl: () => true });
+type PullRequests = NonNullable<NonNullable<Parameters<typeof renderSlot>[2]>["sidebarPullRequests"]>;
+
+function renderPage(rpc: RpcHandlers, sidebarPullRequests: PullRequests = {}) {
+  return renderSlot(app.navPanels[0]!, { subPath: "" }, { rpc, openUrl: () => true, sidebarPullRequests });
 }
+
+const pullRequest = (number: number, state: PullRequests[string]["state"]): PullRequests[string] => ({
+  number,
+  title: `PR ${number}`,
+  url: `https://github.com/acme/app/pull/${number}`,
+  state,
+  attention: "none",
+});
 
 describe("Jira page", () => {
   it("shows a loading state until the list arrives", async () => {
@@ -99,6 +109,30 @@ describe("Jira page", () => {
         expect.objectContaining({ url: "https://example.atlassian.net/browse/ABC-12" }),
       ]),
     );
+  });
+
+  it.each(["open", "draft", "merged", "closed"] as const)("shows a %s pull request next to its thread", async (state) => {
+    const slot = renderPage({ tickets: () => list() }, { thr_1: pullRequest(412, state) });
+
+    expect(await slot.findByRole("button", { name: `PR #412 (${state})` })).toBeTruthy();
+  });
+
+  it("shows no pull request for a thread without one", async () => {
+    const slot = renderPage({ tickets: () => list() }, { thr_1: pullRequest(412, "open") });
+
+    await slot.findByText("Old attempt");
+    expect(slot.getAllByRole("button", { name: /^PR #/ })).toHaveLength(1);
+  });
+
+  it("opens the pull request, not the thread, when its pill is clicked", async () => {
+    const slot = renderPage({ tickets: () => list() }, { thr_1: pullRequest(412, "open") });
+
+    const pill = await slot.findByRole("button", { name: "PR #412 (open)" });
+    await act(async () => pill.click());
+
+    expect(slot.inspection.navigateCalls).toEqual([
+      expect.objectContaining({ url: "https://github.com/acme/app/pull/412" }),
+    ]);
   });
 
   it("says when no ticket matches the query", async () => {
