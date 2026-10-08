@@ -57,6 +57,15 @@ export const MIGRATIONS = [
   `ALTER TABLE tabs ADD COLUMN filters TEXT NOT NULL DEFAULT '[]'`,
   `ALTER TABLE tab_state ADD COLUMN field_values TEXT NOT NULL DEFAULT '{}'`,
   `ALTER TABLE tab_state ADD COLUMN values_limit_reached INTEGER NOT NULL DEFAULT 0`,
+  `CREATE TABLE IF NOT EXISTS tickets (
+    key TEXT PRIMARY KEY,
+    summary TEXT NOT NULL,
+    status TEXT NOT NULL,
+    status_category TEXT NOT NULL,
+    issue_type TEXT NOT NULL,
+    url TEXT NOT NULL,
+    position INTEGER NOT NULL
+  )`,
 ]
 
 export function inTransaction<T>(db: SqlDatabase, work: () => T): T {
