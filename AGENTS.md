@@ -1,0 +1,1 @@
+Plugin `MIGRATIONS` are append-only and additive: add new tables, indexes, and columns with a `DEFAULT` at the end. All worktrees share one plugin database, so older checkouts must still find every table and column they use.
