@@ -4,6 +4,12 @@ export function quoteLiteral(text: string): string {
   return `"${text.replace(/[\\"]/g, (char) => `\\${char}`)}"`
 }
 
+const QUOTED_LITERAL = /^"(?:[^"\\]|\\.)*"$/
+
+export function isQuotedLiteral(jql: string): boolean {
+  return QUOTED_LITERAL.test(jql)
+}
+
 export function effectiveJql(base: string, filters: Filter[]): string {
   if (filters.length === 0) return base
   const { where, orderBy } = splitOrderBy(base)

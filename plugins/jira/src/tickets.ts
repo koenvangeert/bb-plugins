@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { adfToText } from './adf'
 import { AcliError } from './acliErrors'
-import { EMPTY_VALUE, SEARCHABLE_FIELD_IDS, type FilterValue } from './filterFields'
+import { EMPTY_VALUE, SEARCHABLE_FIELD_IDS, type FilterValue, type SearchableFieldId } from './filterFields'
 import { quoteLiteral } from './filterJql'
 
 export interface Ticket {
@@ -19,7 +19,7 @@ export interface TicketDetail extends Ticket {
 
 export interface SearchIssue {
   ticket: Ticket
-  values: Record<string, FilterValue[]>
+  values: Record<SearchableFieldId, FilterValue[]>
 }
 
 export const TICKET_LIMIT = 200
@@ -83,18 +83,18 @@ export function parseSearch(stdout: string, siteUrl?: string): SearchIssue[] {
   }))
 }
 
-export function fieldValues(issues: SearchIssue[]): Record<string, FilterValue[]> {
+export function fieldValues(issues: SearchIssue[]): Record<SearchableFieldId, FilterValue[]> {
   return Object.fromEntries(
     SEARCHABLE_FIELD_IDS.map((field) => {
       const byJql = new Map<string, FilterValue>()
-      for (const issue of issues) for (const value of issue.values[field] ?? []) byJql.set(value.jql, value)
+      for (const issue of issues) for (const value of issue.values[field]) byJql.set(value.jql, value)
       const sorted = [...byJql.values()].sort((a, b) => a.label.localeCompare(b.label))
       return [field, [...sorted, EMPTY_VALUE]]
     }),
-  )
+  ) as Record<SearchableFieldId, FilterValue[]>
 }
 
-function issueValues({ fields }: Issue): Record<string, FilterValue[]> {
+function issueValues({ fields }: Issue): Record<SearchableFieldId, FilterValue[]> {
   const byName = (value: { name: string } | null | undefined) => (value ? [{ label: value.name, jql: quoteLiteral(value.name) }] : [])
   const byUser = (value: { accountId: string; displayName: string } | null | undefined) =>
     value ? [{ label: value.displayName, jql: quoteLiteral(value.accountId) }] : []

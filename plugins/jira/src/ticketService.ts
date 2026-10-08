@@ -87,7 +87,7 @@ export function createTicketService(options: {
   }
 
   const snapshot = (): TicketSnapshot => ({
-    tabs: tabs.list().map((tab) => ({ ...tab, tickets: tabs.tickets(tab.id), ...tabs.state(tab.id), ...tabs.values(tab.id) })),
+    tabs: tabs.list().map((tab) => ({ ...tab, tickets: tabs.tickets(tab.id), ...tabs.state(tab.id) })),
     health: readHealth(),
     refreshing: running !== null,
   })
@@ -135,10 +135,14 @@ export function createTicketService(options: {
     values,
   })
 
-  const readTab = async ({ jql, filters }: Pick<Tab, 'jql' | 'filters'>): Promise<TabList> => {
-    const base = await searchAndTrackHealth(jql)
-    const values = { fieldValues: fieldValues(base.issues), valuesLimitReached: base.limitReached }
-    if (filters.length === 0) return listOf(base, values)
+  const valuesOf = (base: SearchResult): TabValues => ({ fieldValues: fieldValues(base.issues), valuesLimitReached: base.limitReached })
+
+  const readTab = async ({ jql, filters }: Pick<Tab, 'jql' | 'filters'>, knownValues?: TabValues): Promise<TabList> => {
+    if (filters.length === 0) {
+      const base = await searchAndTrackHealth(jql)
+      return listOf(base, valuesOf(base))
+    }
+    const values = knownValues ?? valuesOf(await searchAndTrackHealth(jql))
     return listOf(await searchAndTrackHealth(effectiveJql(jql, filters)), values)
   }
 
@@ -182,11 +186,7 @@ export function createTicketService(options: {
     async setFilters({ id, filters }) {
       const existing = tabs.get(id)
       if (!existing) throw new TabNotFoundError(id)
-      const list =
-        filters.length === 0
-          ? await readTab({ jql: existing.jql, filters })
-          : listOf(await searchAndTrackHealth(effectiveJql(existing.jql, filters)), tabs.values(id))
-      tabs.setFilters(existing, filters, list)
+      tabs.setFilters(existing, filters, await readTab({ jql: existing.jql, filters }, tabs.state(id)))
       return snapshot()
     },
     deleteTab(id) {

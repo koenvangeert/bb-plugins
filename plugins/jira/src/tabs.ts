@@ -1,5 +1,5 @@
 import { inTransaction, type SqlDatabase } from './database'
-import type { Filter, FilterValue } from './filterFields'
+import type { FieldValues, Filter } from './filterFields'
 import type { Ticket } from './tickets'
 
 export const FIRST_TAB = { name: 'My tickets', jql: 'assignee = currentUser() AND statusCategory != Done' }
@@ -19,7 +19,7 @@ export interface Tab {
 }
 
 export interface TabValues {
-  fieldValues: Record<string, FilterValue[]>
+  fieldValues: FieldValues
   valuesLimitReached: boolean
 }
 
@@ -52,6 +52,14 @@ interface TabRow {
   filters: string
 }
 
+interface TabStateRow {
+  refreshed_at: number | null
+  error: string | null
+  limit_reached: number
+  field_values: string
+  values_limit_reached: number
+}
+
 const TICKET_COLUMNS = 'key, summary, status, status_category, issue_type, url'
 const TAB_COLUMNS = 'id, name, jql, filters'
 
@@ -73,13 +81,16 @@ export function createTabStore(db: SqlDatabase) {
       insert.run(tabId, ticket.key, ticket.summary, ticket.status, ticket.statusCategory, ticket.issueType, ticket.url, position),
     )
     db.prepare(
-      `INSERT INTO tab_state (tab_id, refreshed_at, error, limit_reached) VALUES (?, ?, NULL, ?)
-       ON CONFLICT (tab_id) DO UPDATE SET refreshed_at = excluded.refreshed_at, error = NULL, limit_reached = excluded.limit_reached`,
-    ).run(tabId, list.refreshedAt, list.limitReached ? 1 : 0)
-    db.prepare('UPDATE tab_state SET field_values = ?, values_limit_reached = ? WHERE tab_id = ?').run(
+      `INSERT INTO tab_state (tab_id, refreshed_at, error, limit_reached, field_values, values_limit_reached)
+       VALUES (?, ?, NULL, ?, ?, ?)
+       ON CONFLICT (tab_id) DO UPDATE SET refreshed_at = excluded.refreshed_at, error = NULL, limit_reached = excluded.limit_reached,
+         field_values = excluded.field_values, values_limit_reached = excluded.values_limit_reached`,
+    ).run(
+      tabId,
+      list.refreshedAt,
+      list.limitReached ? 1 : 0,
       JSON.stringify(list.values.fieldValues),
       list.values.valuesLimitReached ? 1 : 0,
-      tabId,
     )
   }
 
@@ -143,21 +154,17 @@ export function createTabStore(db: SqlDatabase) {
         toTicket,
       ),
 
-    state(tabId: number): TabState {
-      const [row] = db.prepare('SELECT refreshed_at, error, limit_reached FROM tab_state WHERE tab_id = ?').all(tabId) as {
-        refreshed_at: number | null
-        error: string | null
-        limit_reached: number
-      }[]
-      return { refreshedAt: row?.refreshed_at ?? null, error: row?.error ?? null, limitReached: row?.limit_reached === 1 }
-    },
-
-    values(tabId: number): TabValues {
-      const [row] = db.prepare('SELECT field_values, values_limit_reached FROM tab_state WHERE tab_id = ?').all(tabId) as {
-        field_values: string
-        values_limit_reached: number
-      }[]
-      return { fieldValues: row ? JSON.parse(row.field_values) : {}, valuesLimitReached: row?.values_limit_reached === 1 }
+    state(tabId: number): TabState & TabValues {
+      const [row] = db
+        .prepare('SELECT refreshed_at, error, limit_reached, field_values, values_limit_reached FROM tab_state WHERE tab_id = ?')
+        .all(tabId) as TabStateRow[]
+      return {
+        refreshedAt: row?.refreshed_at ?? null,
+        error: row?.error ?? null,
+        limitReached: row?.limit_reached === 1,
+        fieldValues: row ? JSON.parse(row.field_values) : {},
+        valuesLimitReached: row?.values_limit_reached === 1,
+      }
     },
 
     allTickets(): Ticket[] {

@@ -1,6 +1,7 @@
 import { defineRpcContract } from '@get-bb/plugin-sdk'
 import { z } from 'zod'
-import { EMPTY_VALUE, FIELD_IDS, type Filter } from './filterFields'
+import { EMPTY_VALUE, FIELD_IDS, SEARCHABLE_FIELD_IDS, type Filter } from './filterFields'
+import { isQuotedLiteral } from './filterJql'
 import type { ThreadLinks } from './threadLinks'
 import { buildPrompt, isTicketKey } from './tickets'
 import type { FiltersInput, TabInput, TicketService, TicketSnapshot } from './ticketService'
@@ -14,11 +15,9 @@ const ticket = z.object({
   url: z.string(),
 })
 
-const QUOTED_LITERAL = /^"(?:[^"\\]|\\.)*"$/
-
 const filterValue = z.object({
   label: z.string(),
-  jql: z.string().refine((jql) => jql === EMPTY_VALUE.jql || QUOTED_LITERAL.test(jql), 'Not a quoted JQL value.'),
+  jql: z.string().refine((jql) => jql === EMPTY_VALUE.jql || isQuotedLiteral(jql), 'Not a quoted JQL value.'),
 })
 
 const filter: z.ZodType<Filter> = z.object({
@@ -39,7 +38,7 @@ const tab = z.object({
   refreshedAt: z.number().nullable(),
   error: z.string().nullable(),
   limitReached: z.boolean(),
-  fieldValues: z.record(z.string(), z.array(filterValue)),
+  fieldValues: z.partialRecord(z.enum(SEARCHABLE_FIELD_IDS), z.array(filterValue)),
   valuesLimitReached: z.boolean(),
 })
 

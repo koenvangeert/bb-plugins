@@ -33,7 +33,13 @@ export type FieldId = FilterField['id']
 
 export const FIELD_IDS = FILTER_FIELDS.map((field) => field.id) as [FieldId, ...FieldId[]]
 
-export const SEARCHABLE_FIELD_IDS: FieldId[] = FILTER_FIELDS.filter((field) => field.searchable).map((field) => field.id)
+type SearchableField = Extract<FilterField, { searchable: true }>
+export type SearchableFieldId = SearchableField['id']
+export type FieldValues = Partial<Record<SearchableFieldId, FilterValue[]>>
+
+export const SEARCHABLE_FIELD_IDS = FILTER_FIELDS.filter((field): field is SearchableField => field.searchable).map(
+  (field) => field.id,
+) as [SearchableFieldId, ...SearchableFieldId[]]
 
 export function filterField(id: FieldId): FilterField {
   return FILTER_FIELDS.find((field) => field.id === id)!

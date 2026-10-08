@@ -51,7 +51,7 @@ describe('migrations', () => {
 
     const tabs = createTabStore(db)
     expect(tabs.list()).toEqual([{ id: 1, name: 'Mine', jql: 'q', filters: [] }])
-    expect(tabs.values(1)).toEqual({ fieldValues: {}, valuesLimitReached: false })
+    expect(tabs.state(1)).toMatchObject({ fieldValues: {}, valuesLimitReached: false })
   })
 })
 
@@ -83,7 +83,7 @@ describe('tab store', () => {
 
     expect(tabs.get(tab.id)!.jql).toBe('new')
     expect(tabs.tickets(tab.id).map((entry) => entry.key)).toEqual(['ABC-2'])
-    expect(tabs.state(tab.id)).toEqual({ refreshedAt: 9, error: null, limitReached: true })
+    expect(tabs.state(tab.id)).toMatchObject({ refreshedAt: 9, error: null, limitReached: true })
   })
 
   it('deletes a tab with its tickets and state, and leaves thread links alone', () => {
@@ -105,7 +105,7 @@ describe('tab store', () => {
     const tab = tabs.insert('Warning', 'q')
 
     expect(tabs.tickets(tab.id)).toEqual([])
-    expect(tabs.state(tab.id)).toEqual({ refreshedAt: null, error: null, limitReached: false })
+    expect(tabs.state(tab.id)).toMatchObject({ refreshedAt: null, error: null, limitReached: false })
   })
 
   it('keeps the last good list when it records an error', () => {
@@ -115,7 +115,7 @@ describe('tab store', () => {
     tabs.recordError(tab, 'bad JQL')
 
     expect(tabs.tickets(tab.id)).toHaveLength(1)
-    expect(tabs.state(tab.id)).toEqual({ refreshedAt: 5, error: 'bad JQL', limitReached: false })
+    expect(tabs.state(tab.id)).toMatchObject({ refreshedAt: 5, error: 'bad JQL', limitReached: false })
   })
 
   it('clears the error on the next good list', () => {
@@ -125,7 +125,7 @@ describe('tab store', () => {
 
     tabs.recordList(tab, { tickets: [], limitReached: false, refreshedAt: 7, values: NO_VALUES })
 
-    expect(tabs.state(tab.id)).toEqual({ refreshedAt: 7, error: null, limitReached: false })
+    expect(tabs.state(tab.id)).toMatchObject({ refreshedAt: 7, error: null, limitReached: false })
   })
 
   it('drops a list or an error for a tab that was deleted or whose query changed', () => {
@@ -141,7 +141,7 @@ describe('tab store', () => {
 
     expect(tabs.tickets(changed.id).map((entry) => entry.key)).toEqual(['ABC-2'])
     expect(tabs.state(changed.id).error).toBeNull()
-    expect(tabs.state(deleted.id)).toEqual({ refreshedAt: null, error: null, limitReached: false })
+    expect(tabs.state(deleted.id)).toMatchObject({ refreshedAt: null, error: null, limitReached: false })
   })
 
   it('rejects an update of a tab that was deleted or changed since it was read, and writes nothing', () => {
@@ -175,7 +175,7 @@ describe('tab store', () => {
 
     tabs.recordError(tab, 'bad JQL')
 
-    expect(tabs.values(tab.id)).toEqual(values)
+    expect(tabs.state(tab.id)).toMatchObject(values)
   })
 
   it('drops a list for a tab whose filters changed, and rejects filters for a stale tab', () => {
@@ -195,7 +195,7 @@ describe('tab store', () => {
 
     tabs.delete(tab.id)
 
-    expect(tabs.values(tab.id)).toEqual({ fieldValues: {}, valuesLimitReached: false })
+    expect(tabs.state(tab.id)).toMatchObject({ fieldValues: {}, valuesLimitReached: false })
   })
 
   it('lists the tickets of all tabs once each, in tab order', () => {
