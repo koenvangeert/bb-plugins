@@ -1,5 +1,5 @@
 import { inTransaction, type SqlDatabase } from './database'
-import type { FieldValues, Filter } from './filterFields'
+import { SEARCHABLE_FIELD_IDS, type FieldValues, type Filter } from './filterFields'
 import type { Ticket } from './tickets'
 
 export const FIRST_TAB = { name: 'My tickets', jql: 'assignee = currentUser() AND statusCategory != Done' }
@@ -162,7 +162,7 @@ export function createTabStore(db: SqlDatabase) {
         refreshedAt: row?.refreshed_at ?? null,
         error: row?.error ?? null,
         limitReached: row?.limit_reached === 1,
-        fieldValues: row ? JSON.parse(row.field_values) : {},
+        fieldValues: row ? knownFieldValues(JSON.parse(row.field_values)) : {},
         valuesLimitReached: row?.values_limit_reached === 1,
       }
     },
@@ -187,6 +187,10 @@ export function createTabStore(db: SqlDatabase) {
 }
 
 export type TabStore = ReturnType<typeof createTabStore>
+
+function knownFieldValues(stored: FieldValues): FieldValues {
+  return Object.fromEntries(SEARCHABLE_FIELD_IDS.filter((id) => id in stored).map((id) => [id, stored[id]]))
+}
 
 function toTab(row: TabRow): Tab {
   return { id: row.id, name: row.name, jql: row.jql, filters: JSON.parse(row.filters) }

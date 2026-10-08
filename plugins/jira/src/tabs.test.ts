@@ -189,6 +189,18 @@ describe('tab store', () => {
     expect(() => tabs.setFilters(tab, [], { tickets: [], limitReached: false, refreshedAt: 4, values: NO_VALUES })).toThrow(TabNotFoundError)
   })
 
+  it('drops stored values of fields this checkout does not offer', () => {
+    const db = migratedDatabase()
+    const tabs = createTabStore(db)
+    const tab = tabs.insert('Ready', 'q', { tickets: [], limitReached: false, refreshedAt: 1, values })
+    db.prepare('UPDATE tab_state SET field_values = ? WHERE tab_id = ?').run(
+      JSON.stringify({ ...values.fieldValues, fixVersions: [EMPTY_VALUE] }),
+      tab.id,
+    )
+
+    expect(tabs.state(tab.id).fieldValues).toEqual(values.fieldValues)
+  })
+
   it('deletes the values with the tab', () => {
     const tabs = createTabStore(migratedDatabase())
     const tab = tabs.insert('Ready', 'q', { tickets: [], limitReached: false, refreshedAt: 1, values })
