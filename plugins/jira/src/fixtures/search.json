@@ -28,7 +28,43 @@
           "self": "https://jira-prod-us-00-as-0.prod.atl-paas.net/rest/api/3/statuscategory/4"
         }
       },
-      "summary": "Fix login"
+      "summary": "Fix login",
+      "assignee": {
+        "accountId": "712020:ann",
+        "accountType": "atlassian",
+        "active": true,
+        "displayName": "Ann Lee",
+        "emailAddress": "ann@example.com",
+        "self": "https://jira-prod-us-00-as-0.prod.atl-paas.net/rest/api/3/user?accountId=712020:ann",
+        "timeZone": "Europe/Brussels"
+      },
+      "reporter": {
+        "accountId": "712020:bob",
+        "accountType": "atlassian",
+        "active": true,
+        "displayName": "Bob Ray",
+        "emailAddress": "bob@example.com",
+        "self": "https://jira-prod-us-00-as-0.prod.atl-paas.net/rest/api/3/user?accountId=712020:bob",
+        "timeZone": "Europe/Brussels"
+      },
+      "creator": {
+        "accountId": "712020:bob",
+        "accountType": "atlassian",
+        "active": true,
+        "displayName": "Bob Ray",
+        "emailAddress": "bob@example.com",
+        "self": "https://jira-prod-us-00-as-0.prod.atl-paas.net/rest/api/3/user?accountId=712020:bob",
+        "timeZone": "Europe/Brussels"
+      },
+      "priority": {
+        "iconUrl": "https://jira-prod-us-00-as-0.prod.atl-paas.net/images/icons/priorities/medium.svg",
+        "id": "3",
+        "name": "Medium",
+        "self": "https://jira-prod-us-00-as-0.prod.atl-paas.net/rest/api/3/priority/3"
+      },
+      "labels": [
+        "frontend"
+      ]
     },
     "fieldsToInclude": null,
     "id": "10012",
@@ -71,7 +107,33 @@
           "self": "https://jira-prod-us-00-as-0.prod.atl-paas.net/rest/api/3/statuscategory/4"
         }
       },
-      "summary": "Add export"
+      "summary": "Add export",
+      "assignee": null,
+      "reporter": {
+        "accountId": "712020:ann",
+        "accountType": "atlassian",
+        "active": true,
+        "displayName": "Ann Lee",
+        "emailAddress": "ann@example.com",
+        "self": "https://jira-prod-us-00-as-0.prod.atl-paas.net/rest/api/3/user?accountId=712020:ann",
+        "timeZone": "Europe/Brussels"
+      },
+      "creator": {
+        "accountId": "712020:ann",
+        "accountType": "atlassian",
+        "active": true,
+        "displayName": "Ann Lee",
+        "emailAddress": "ann@example.com",
+        "self": "https://jira-prod-us-00-as-0.prod.atl-paas.net/rest/api/3/user?accountId=712020:ann",
+        "timeZone": "Europe/Brussels"
+      },
+      "priority": {
+        "iconUrl": "https://jira-prod-us-00-as-0.prod.atl-paas.net/images/icons/priorities/high.svg",
+        "id": "2",
+        "name": "High",
+        "self": "https://jira-prod-us-00-as-0.prod.atl-paas.net/rest/api/3/priority/2"
+      },
+      "labels": []
     },
     "fieldsToInclude": null,
     "id": "10040",
@@ -114,7 +176,44 @@
           "self": "https://jira-prod-us-00-as-0.prod.atl-paas.net/rest/api/3/statuscategory/4"
         }
       },
-      "summary": "Blank page instead of an error message"
+      "summary": "Blank page instead of an error message",
+      "assignee": {
+        "accountId": "712020:ann",
+        "accountType": "atlassian",
+        "active": true,
+        "displayName": "Ann Lee",
+        "emailAddress": "ann@example.com",
+        "self": "https://jira-prod-us-00-as-0.prod.atl-paas.net/rest/api/3/user?accountId=712020:ann",
+        "timeZone": "Europe/Brussels"
+      },
+      "reporter": {
+        "accountId": "712020:bob",
+        "accountType": "atlassian",
+        "active": true,
+        "displayName": "Bob Ray",
+        "emailAddress": "bob@example.com",
+        "self": "https://jira-prod-us-00-as-0.prod.atl-paas.net/rest/api/3/user?accountId=712020:bob",
+        "timeZone": "Europe/Brussels"
+      },
+      "creator": {
+        "accountId": "712020:bob",
+        "accountType": "atlassian",
+        "active": true,
+        "displayName": "Bob Ray",
+        "emailAddress": "bob@example.com",
+        "self": "https://jira-prod-us-00-as-0.prod.atl-paas.net/rest/api/3/user?accountId=712020:bob",
+        "timeZone": "Europe/Brussels"
+      },
+      "priority": {
+        "iconUrl": "https://jira-prod-us-00-as-0.prod.atl-paas.net/images/icons/priorities/medium.svg",
+        "id": "3",
+        "name": "Medium",
+        "self": "https://jira-prod-us-00-as-0.prod.atl-paas.net/rest/api/3/priority/3"
+      },
+      "labels": [
+        "frontend",
+        "bug-bash"
+      ]
     },
     "fieldsToInclude": null,
     "id": "10077",

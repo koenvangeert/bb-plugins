@@ -70,6 +70,10 @@ describe('costOf', () => {
     expect(totalCost(cost!)).toBeCloseTo(2.7775032, 6)
   })
 
+  it('prices Sonnet 5.5 at Sonnet 5 rates', () => {
+    expect(costOf('claude-sonnet-5-5[1m]', OPUS_TOKENS)).toEqual(costOf('claude-sonnet-5', OPUS_TOKENS))
+  })
+
   it('returns null for an unpriced model rather than zero', () => {
     expect(costOf('<synthetic>', OPUS_TOKENS)).toBeNull()
     expect(isPricedModel('<synthetic>')).toBe(false)

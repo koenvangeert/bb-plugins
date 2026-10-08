@@ -27,6 +27,7 @@ export const PRICE_TABLE: Readonly<Record<string, ModelPrice>> = {
   'claude-opus-4-8': OPUS,
   'claude-opus-4-7': OPUS,
   'claude-opus-4-6': OPUS,
+  'claude-sonnet-5-5': SONNET,
   'claude-sonnet-5': SONNET,
   'claude-sonnet-4-6': SONNET,
   'claude-sonnet-4-5': SONNET,
