@@ -3,7 +3,7 @@ import { useBbNavigate, useRpc, type PluginThreadHeaderActionProps } from "@get-
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import type { rpcContract, ThreadLinkResult, TicketList } from "../rpc";
+import type { rpcContract, ThreadLinkResult } from "../rpc";
 import { errorMessage } from "../errorMessage";
 import { usePolled } from "./usePolled";
 
@@ -112,8 +112,8 @@ function LinkedTicket({
 
 function LinkPicker({ threadId, onLinked }: { threadId: string; onLinked(): Promise<void> }) {
   const rpc = useRpc<typeof rpcContract>();
-  const loadTickets = useCallback(() => rpc.call("tickets", null), [rpc]);
-  const { value: list } = usePolled<TicketList>(loadTickets);
+  const loadTickets = useCallback(() => rpc.call("pickerTickets", null), [rpc]);
+  const { value: tickets } = usePolled(loadTickets);
   const [key, setKey] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [linking, setLinking] = useState(false);
@@ -153,9 +153,9 @@ function LinkPicker({ threadId, onLinked }: { threadId: string; onLinked(): Prom
           {error}
         </p>
       ) : null}
-      {list && list.tickets.length > 0 ? (
-        <ul aria-label="My tickets" className="m-0 flex max-h-72 list-none flex-col overflow-y-auto p-0">
-          {list.tickets.map((ticket) => (
+      {tickets && tickets.length > 0 ? (
+        <ul aria-label="Tickets from your tabs" className="m-0 flex max-h-72 list-none flex-col overflow-y-auto p-0">
+          {tickets.map((ticket) => (
             <li key={ticket.key}>
               <button
                 type="button"

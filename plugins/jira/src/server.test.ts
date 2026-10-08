@@ -31,14 +31,22 @@ const ticketList = (harness: Harness) => harness.behavior.callRpc('tickets', nul
 async function refreshOnce(harness: Harness) {
   const service = harness.behavior.runService('ticket-refresh')
   await expect.poll(async () => {
-    const list = await ticketList(harness)
-    return list.refreshedAt ?? list.error
+    const [tab] = (await ticketList(harness)).tabs
+    return tab?.refreshedAt ?? tab?.error
   }).toBeTruthy()
   service.controller.abort()
   await service.done
 }
 
 describe('jira plugin server', () => {
+  it('starts with one "My tickets" tab on the default query', async () => {
+    const harness = await start(fakeAcli())
+
+    expect((await ticketList(harness)).tabs).toEqual([
+      expect.objectContaining({ name: 'My tickets', jql: 'assignee = currentUser() AND statusCategory != Done' }),
+    ])
+  })
+
   it('marks the plugin as needing configuration when acli is logged out', async () => {
     const harness = await start(fakeAcli({ search: { exitCode: 1, stderr: fixture('auth-status-logged-out.txt') } }))
 
@@ -63,7 +71,7 @@ describe('jira plugin server', () => {
     const list = await ticketList(harness)
 
     expect(harness.needsConfigurationMessages).toEqual([])
-    expect(list.tickets[0]).toMatchObject({
+    expect(list.tabs[0]!.tickets[0]).toMatchObject({
       key: 'ABC-12',
       url: 'https://example.atlassian.net/browse/ABC-12',
       threads: [{ threadId: 'thr_1', title: 'Fix it', archived: false }],
@@ -78,6 +86,6 @@ describe('jira plugin server', () => {
     await harness.behavior.emitThreadEvent('thread.deleted', { thread: makeThreadResponse({ id: 'thr_1' }) })
     const list = await ticketList(harness)
 
-    expect(list.tickets[0]!.threads).toEqual([])
+    expect(list.tabs[0]!.tickets[0]!.threads).toEqual([])
   })
 })

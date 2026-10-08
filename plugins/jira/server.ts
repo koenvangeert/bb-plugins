@@ -4,6 +4,7 @@ import { MIGRATIONS } from "./src/database";
 import { runRefreshLoop } from "./src/refreshLoop";
 import { createRpcHandlers, rpcContract } from "./src/rpc";
 import { SETTINGS } from "./src/settings";
+import { createTabStore } from "./src/tabs";
 import { createThreadLinks } from "./src/threadLinks";
 import { createTicketService } from "./src/ticketService";
 
@@ -13,11 +14,13 @@ export const createPlugin = (acli: AcliRunner) => async function plugin(bb: BbPl
   const settings = bb.settings.define(SETTINGS);
   const db = bb.storage.database();
   bb.storage.migrate(db, MIGRATIONS);
+  const tabs = createTabStore(db);
+  tabs.seedFirstTab();
 
   const tickets = createTicketService({
     db,
+    tabs,
     acli,
-    readJql: async () => (await settings.get()).jql,
     now: () => Date.now(),
     onHealth: (health, message) => {
       if (health !== "ok" && message) bb.status.needsConfiguration(message);

@@ -2,7 +2,8 @@ See your Jira tickets in BB and connect threads to them.
 
 ## What you get
 
-- A **Jira** page in the sidebar with the tickets assigned to you and the threads working on each one.
+- A **Jira** page in the sidebar with your own tabs, one per JQL query (for example "Ready to pick up" or "This release"), each with its ticket count and the threads working on each ticket.
+- **Filters** per tab on status, type, assignee, fix version, and more, saved with the tab.
 - **Start thread** on a ticket, with the ticket text as the first prompt.
 - The linked ticket and its status in each thread header, with a **Link Jira** picker for threads that have none.
 

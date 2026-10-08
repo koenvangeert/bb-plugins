@@ -1,6 +1,8 @@
 import { z } from 'zod'
 import { adfToText } from './adf'
 import { AcliError } from './acliErrors'
+import { EMPTY_VALUE, SEARCHABLE_FIELD_IDS, type FilterValue, type SearchableFieldId } from './filterFields'
+import { quoteLiteral } from './filterJql'
 
 export interface Ticket {
   key: string
@@ -13,6 +15,11 @@ export interface Ticket {
 
 export interface TicketDetail extends Ticket {
   description: string
+}
+
+export interface SearchIssue {
+  ticket: Ticket
+  values: Record<SearchableFieldId, FilterValue[]>
 }
 
 export const TICKET_LIMIT = 200
@@ -43,6 +50,9 @@ export function buildPrompt(ticket: TicketDetail): string {
   return lines.join('\n')
 }
 
+const named = z.object({ name: z.string() })
+const user = z.object({ accountId: z.string(), displayName: z.string() })
+
 const issueSchema = z.object({
   key: z.string().regex(TICKET_KEY),
   fields: z.object({
@@ -51,7 +61,12 @@ const issueSchema = z.object({
       name: z.string(),
       statusCategory: z.object({ key: z.string() }).optional(),
     }),
-    issuetype: z.object({ name: z.string() }).optional(),
+    issuetype: named.optional(),
+    priority: named.nullish().catch(null),
+    assignee: user.nullish().catch(null),
+    reporter: user.nullish().catch(null),
+    creator: user.nullish().catch(null),
+    labels: z.array(z.string()).nullish().catch(null),
     description: z.unknown().optional(),
   }),
 })
@@ -60,9 +75,38 @@ type Issue = z.infer<typeof issueSchema>
 
 const searchSchema = z.union([z.array(issueSchema), z.object({ issues: z.array(issueSchema) })])
 
-export function parseSearch(stdout: string, siteUrl?: string): Ticket[] {
+export function parseSearch(stdout: string, siteUrl?: string): SearchIssue[] {
   const parsed = parseJson(stdout, searchSchema)
-  return (Array.isArray(parsed) ? parsed : parsed.issues).map((issue) => toTicket(issue, siteUrl))
+  return (Array.isArray(parsed) ? parsed : parsed.issues).map((issue) => ({
+    ticket: toTicket(issue, siteUrl),
+    values: issueValues(issue),
+  }))
+}
+
+export function fieldValues(issues: SearchIssue[]): Record<SearchableFieldId, FilterValue[]> {
+  return Object.fromEntries(
+    SEARCHABLE_FIELD_IDS.map((field) => {
+      const byJql = new Map<string, FilterValue>()
+      for (const issue of issues) for (const value of issue.values[field]) byJql.set(value.jql, value)
+      const sorted = [...byJql.values()].sort((a, b) => a.label.localeCompare(b.label))
+      return [field, [...sorted, EMPTY_VALUE]]
+    }),
+  ) as Record<SearchableFieldId, FilterValue[]>
+}
+
+function issueValues({ fields }: Issue): Record<SearchableFieldId, FilterValue[]> {
+  const byName = (value: { name: string } | null | undefined) => (value ? [{ label: value.name, jql: quoteLiteral(value.name) }] : [])
+  const byUser = (value: { accountId: string; displayName: string } | null | undefined) =>
+    value ? [{ label: value.displayName, jql: quoteLiteral(value.accountId) }] : []
+  return {
+    status: byName(fields.status),
+    issuetype: byName(fields.issuetype),
+    priority: byName(fields.priority),
+    assignee: byUser(fields.assignee),
+    reporter: byUser(fields.reporter),
+    creator: byUser(fields.creator),
+    labels: (fields.labels ?? []).map((label) => ({ label, jql: quoteLiteral(label) })),
+  }
 }
 
 export function parseView(stdout: string, siteUrl?: string): TicketDetail {
