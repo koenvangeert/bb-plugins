@@ -1,4 +1,5 @@
 import { attribute, type AttributionMap } from './attribution'
+import { DAILY_SERIES_DAYS } from './dailyChartConfig'
 import {
   addCost,
   addTokens,
@@ -60,7 +61,6 @@ export interface SpendDashboardData {
 }
 
 const DAY_MS = 86_400_000
-export const DAILY_SERIES_DAYS = 30
 const TOP_THREADS = 15
 
 function emptyFigure(): SpendFigure {
@@ -86,6 +86,29 @@ export function startOfLocalDay(timestamp: number): number {
   const date = new Date(timestamp)
   date.setHours(0, 0, 0, 0)
   return date.getTime()
+}
+
+function localDaysBetween(earlierDay: string, laterDayStart: number): number {
+  const [year, month, dayOfMonth] = earlierDay.split('-').map(Number)
+  return Math.round((laterDayStart - new Date(year!, month! - 1, dayOfMonth!).getTime()) / DAY_MS)
+}
+
+function dailySeriesUpTo(
+  todayStart: number,
+  daily: Map<string, { total: number; breakdown: CostBreakdown }>,
+  earliestDay: string | null,
+): DailySpend[] {
+  const daysOfHistory = earliestDay ? localDaysBetween(earliestDay, todayStart) + 1 : 0
+  const length = Math.max(1, Math.ceil(daysOfHistory / DAILY_SERIES_DAYS)) * DAILY_SERIES_DAYS
+  const cursor = new Date(todayStart)
+  const series: DailySpend[] = []
+  for (let position = 0; position < length; position += 1) {
+    const day = localDayOf(cursor.getTime())
+    const bucket = daily.get(day)
+    series.push({ day, total: bucket?.total ?? 0, breakdown: bucket?.breakdown ?? { ...EMPTY_COST } })
+    cursor.setDate(cursor.getDate() - 1)
+  }
+  return series.reverse()
 }
 
 const OUTSIDE = { key: 'outside', label: 'Outside BB' }
@@ -144,7 +167,7 @@ export function buildDashboard(
     if (timestamp >= sevenDayStart) addToFigure(totals.last7Days, cost, row.tokens)
     if (timestamp >= todayStart) addToFigure(totals.today, cost, row.tokens)
 
-    if (cost && timestamp >= thirtyDayStart) {
+    if (cost) {
       const bucket = daily.get(day) ?? { total: 0, breakdown: { ...EMPTY_COST } }
       bucket.breakdown = addCost(bucket.breakdown, cost)
       bucket.total += totalCost(cost)
@@ -176,12 +199,7 @@ export function buildDashboard(
     }
   }
 
-  const dailySeries: DailySpend[] = []
-  for (let offset = DAILY_SERIES_DAYS - 1; offset >= 0; offset -= 1) {
-    const day = localDayOf(todayStart - offset * DAY_MS)
-    const bucket = daily.get(day)
-    dailySeries.push({ day, total: bucket?.total ?? 0, breakdown: bucket?.breakdown ?? { ...EMPTY_COST } })
-  }
+  const dailySeries = dailySeriesUpTo(todayStart, daily, earliestDay)
 
   const byDescendingTotal = (left: { total: number }, right: { total: number }) => right.total - left.total
 

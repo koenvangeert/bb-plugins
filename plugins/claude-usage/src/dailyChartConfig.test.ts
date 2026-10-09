@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { buildDailyChartData, CHART_SERIES, dayTotal, tooltipLine, tooltipTitle, type ChartPalette } from './dailyChartConfig'
+import {
+  buildDailyChartData,
+  CHART_SERIES,
+  dailyWindow,
+  dayTotal,
+  tooltipLine,
+  tooltipTitle,
+  type ChartPalette,
+} from './dailyChartConfig'
 import type { DailySpend } from './dashboard'
 
 const palette: ChartPalette = {
@@ -71,5 +79,27 @@ describe('tooltip text', () => {
   it('reads a day total by position', () => {
     expect(dayTotal([day({ total: 42 })], 0)).toBe(42)
     expect(dayTotal([], 0)).toBe(0)
+  })
+})
+
+describe('dailyWindow', () => {
+  const series = Array.from({ length: 60 }, (_, position) => day({ day: `d${position}` }))
+
+  it('shows the newest 30 days first', () => {
+    const window = dailyWindow(series, 0)
+
+    expect(window.days.map((entry) => entry.day)).toEqual(series.slice(30).map((entry) => entry.day))
+    expect(window).toMatchObject({ windowsBack: 0, hasOlder: true, hasNewer: false })
+  })
+
+  it('steps back one 30-day window per offset', () => {
+    const window = dailyWindow(series, 1)
+
+    expect(window.days.map((entry) => entry.day)).toEqual(series.slice(0, 30).map((entry) => entry.day))
+    expect(window).toMatchObject({ windowsBack: 1, hasOlder: false, hasNewer: true })
+  })
+
+  it('stops at the oldest window when asked to go further back', () => {
+    expect(dailyWindow(series, 5)).toMatchObject({ windowsBack: 1, hasOlder: false })
   })
 })

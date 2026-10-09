@@ -2,6 +2,8 @@ import type { CostBreakdown } from './pricing'
 import type { DailySpend } from './dashboard'
 import { formatDayLabel, formatMoney } from './format'
 
+export const DAILY_SERIES_DAYS = 30
+
 export interface ChartSeries {
   key: keyof CostBreakdown
   label: string
@@ -51,6 +53,25 @@ export function buildDailyChartData(series: DailySpend[], palette: ChartPalette)
       borderRadius: 2,
       stack: 'spend',
     })),
+  }
+}
+
+export interface DailyWindow {
+  days: DailySpend[]
+  windowsBack: number
+  hasOlder: boolean
+  hasNewer: boolean
+}
+
+export function dailyWindow(series: DailySpend[], windowsBack: number): DailyWindow {
+  const oldest = Math.max(0, series.length / DAILY_SERIES_DAYS - 1)
+  const clamped = Math.min(Math.max(0, windowsBack), oldest)
+  const end = series.length - clamped * DAILY_SERIES_DAYS
+  return {
+    days: series.slice(end - DAILY_SERIES_DAYS, end),
+    windowsBack: clamped,
+    hasOlder: clamped < oldest,
+    hasNewer: clamped > 0,
   }
 }
 

@@ -75,12 +75,31 @@ describe("Claude usage page", () => {
 
     expect(await slot.findByText("Last 30 days")).toBeTruthy();
     expect(slot.getAllByText("$50.00").length).toBeGreaterThan(0);
-    expect(slot.getByLabelText("Daily spend for the last 30 days")).toBeTruthy();
+    expect(slot.getByLabelText("Daily spend from Jul 29 to Aug 27")).toBeTruthy();
     expect(slot.getAllByText("frontend")).toHaveLength(2);
     expect(slot.getByText("Outside BB")).toBeTruthy();
     expect(slot.getByText("Fix the panel")).toBeTruthy();
     expect(slot.getByText("claude-opus-5")).toBeTruthy();
     expect(slot.getByText(/Every figure is a lower bound/)).toBeTruthy();
+  });
+
+  it("pages the daily chart back and forward one 30-day window at a time", async () => {
+    const old = response({ messageId: "msg_2", timestamp: NOW - 45 * 24 * 60 * 60 * 1000 });
+    const slot = renderDashboard(() => dashboardOf([old, response()]));
+    const older = await slot.findByRole("button", { name: "Previous 30 days" });
+    const newer = slot.getByRole("button", { name: "Next 30 days" });
+    expect(slot.getByText("Jul 29 to Aug 27")).toBeTruthy();
+    expect(newer.hasAttribute("disabled")).toBe(true);
+
+    await act(async () => older.click());
+
+    expect(slot.getByText("Jun 29 to Jul 28")).toBeTruthy();
+    expect(older.hasAttribute("disabled")).toBe(true);
+    expect(newer.hasAttribute("disabled")).toBe(false);
+
+    await act(async () => newer.click());
+
+    expect(slot.getByText("Jul 29 to Aug 27")).toBeTruthy();
   });
 
   it("names an unpriced model in a banner", async () => {

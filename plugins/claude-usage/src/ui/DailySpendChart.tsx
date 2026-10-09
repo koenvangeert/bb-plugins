@@ -76,7 +76,7 @@ function configuration(series: DailySpend[], palette: ChartPalette): ChartConfig
   };
 }
 
-export function DailySpendChart({ series }: { series: DailySpend[] }) {
+export function DailySpendChart({ series, label }: { series: DailySpend[]; label: string }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const target = canvas.current;
@@ -86,7 +86,7 @@ export function DailySpendChart({ series }: { series: DailySpend[] }) {
   }, [series]);
   return (
     <div className="relative h-60">
-      <canvas ref={canvas} aria-label="Daily spend for the last 30 days" />
+      <canvas ref={canvas} aria-label={label} />
     </div>
   );
 }
