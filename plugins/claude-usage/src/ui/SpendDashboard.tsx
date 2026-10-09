@@ -2,7 +2,8 @@ import { useCallback, useState } from "react";
 import type { ReactNode } from "react";
 import { useRpc } from "@get-bb/plugin-sdk/app";
 import { Button } from "@/components/ui/button";
-import { CHART_SERIES } from "../dailyChartConfig";
+import { Icon } from "@/components/ui/icon";
+import { CHART_SERIES, dailyWindow } from "../dailyChartConfig";
 import { formatDayLabel, formatMoney, formatShare, formatTokens } from "../format";
 import type { Dashboard, rpcContract } from "../rpc";
 import { DailySpendChart } from "./DailySpendChart";
@@ -20,7 +21,7 @@ function Panel({ title, aside, children }: { title: string; aside?: ReactNode; c
     <section className="rounded-lg border border-border bg-card p-4">
       <div className="flex items-baseline justify-between gap-4">
         <h3 className="m-0 text-sm font-semibold">{title}</h3>
-        {aside ? <span className="text-xs text-muted-foreground">{aside}</span> : null}
+        {aside ? <div className="flex items-center gap-2 text-xs text-muted-foreground">{aside}</div> : null}
       </div>
       <div className="mt-3">{children}</div>
     </section>
@@ -59,14 +60,46 @@ function Totals({ dashboard }: { dashboard: Dashboard }) {
 }
 
 function DailyPanel({ dashboard }: { dashboard: Dashboard }) {
-  const peak = Math.max(0, ...dashboard.dailySeries.map((day) => day.total));
+  const [requestedWindowsBack, setRequestedWindowsBack] = useState(0);
+  const shown = dailyWindow(dashboard.dailySeries, requestedWindowsBack);
+  const peak = Math.max(0, ...shown.days.map((day) => day.total));
+  const range = shown.days.length
+    ? `${formatDayLabel(shown.days[0]!.day)} to ${formatDayLabel(shown.days.at(-1)!.day)}`
+    : "";
   const allTime = dashboard.totals.allTime;
   return (
     <Panel
       title="Daily spend"
-      aside={`${formatMoney(dashboard.runRatePerDay)}/day over the last 7 days · ${formatMoney(peak)} peak`}
+      aside={
+        <>
+          <span>{`${formatMoney(dashboard.runRatePerDay)}/day over the last 7 days · ${formatMoney(peak)} peak`}</span>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="size-7"
+            aria-label="Previous 30 days"
+            disabled={!shown.hasOlder}
+            onClick={() => setRequestedWindowsBack(shown.windowsBack + 1)}
+          >
+            <Icon name="ArrowLeft" aria-hidden />
+          </Button>
+          <span className="tabular-nums" aria-live="polite">
+            {range}
+          </span>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="size-7"
+            aria-label="Next 30 days"
+            disabled={!shown.hasNewer}
+            onClick={() => setRequestedWindowsBack(shown.windowsBack - 1)}
+          >
+            <Icon name="ArrowRight" aria-hidden />
+          </Button>
+        </>
+      }
     >
-      <DailySpendChart series={dashboard.dailySeries} />
+      <DailySpendChart series={shown.days} label={`Daily spend from ${range}`} />
       <div className="mt-3 flex flex-wrap gap-4 text-xs text-muted-foreground">
         {CHART_SERIES.map((entry) => (
           <span key={entry.key} className="flex items-center gap-1.5">

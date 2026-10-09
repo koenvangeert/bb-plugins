@@ -122,6 +122,25 @@ describe('buildDashboard', () => {
     expect(dashboard.dailySeries.slice(0, -1).every((day) => day.total === 0)).toBe(true)
   })
 
+  it('extends the series back to the first recorded day in whole 30-day windows', () => {
+    const old = response({ timestamp: NOW - 45 * 86_400_000 })
+
+    const dashboard = buildDashboard(indexOf(old, response()), map, NOW)
+
+    expect(dashboard.dailySeries).toHaveLength(60)
+    expect(dashboard.dailySeries[14]).toMatchObject({ day: localDayOf(old.timestamp), total: 25 })
+    expect(dashboard.dailySeries.at(-1)).toMatchObject({ day: localDayOf(NOW), total: 25 })
+  })
+
+  it('gives every day of a long series its own calendar date across DST changes', () => {
+    const old = response({ timestamp: NOW - 400 * 86_400_000 })
+
+    const days = buildDashboard(indexOf(old), map, NOW).dailySeries.map((entry) => entry.day)
+
+    expect(new Set(days).size).toBe(days.length)
+    expect(days).toEqual([...days].sort())
+  })
+
   it('splits spend across the cost components that produced it', () => {
     const mixed = response({
       tokens: { input: 1_000_000, output: 1_000_000, cacheWrite5m: 1_000_000, cacheWrite1h: 0, cacheRead: 1_000_000 },

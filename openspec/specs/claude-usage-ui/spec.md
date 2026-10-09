@@ -11,7 +11,7 @@ Shows Claude Code API spend inside BB: a dashboard page across all projects, a f
 The plugin SHALL add a sidebar page named `Claude usage`, reachable without selecting a project. The page SHALL show:
 
 - spend today, over 7 days, over 30 days, and over all indexed history
-- a 30-day daily bar chart, stacked by input, output, cache write, and cache read
+- a 30-day daily bar chart, stacked by input, output, cache write, and cache read, with back and forward buttons that page it one 30-day window at a time through all indexed history
 - spend per project, including "Outside BB"
 - the top 15 threads by spend
 - spend per model, with token volumes
@@ -22,6 +22,13 @@ Days SHALL be local days. The page SHALL re-read figures every minute while open
 
 - **WHEN** the user opens `Claude usage` from the sidebar
 - **THEN** the page shows the four totals, the chart, and the project, thread, and model breakdowns
+
+#### Scenario: Page the daily chart
+
+- **WHEN** the chart shows the newest 30 days and older history exists
+- **AND** the user clicks the back button
+- **THEN** the chart shows the 30 days before that, and the forward button returns to the newest 30 days
+- **AND** the forward button is disabled on the newest window and the back button on the oldest
 
 #### Scenario: No transcripts yet
 
